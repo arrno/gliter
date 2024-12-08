@@ -1,5 +1,5 @@
 # Glitter ✨
-Iter tools for Go
+**Iter tools for Go**
 
 **Push-Pop**
 ```go
@@ -10,7 +10,7 @@ list.Push(8) // appends `8`
 
 **More**
 ```go
-newList := glitter.
+val := glitter.
     IntoList([]uint{0, 1, 2, 3, 4}).
     Filter(func(i uint) bool { return i%2 == 0 }).
     Map(func(val uint) uint {
