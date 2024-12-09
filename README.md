@@ -3,7 +3,7 @@
 
 **Push-Pop**
 ```go
-list := glitter.IntoList([]uint{0, 1, 2, 3, 4})
+list := glitter.List(0, 1, 2, 3, 4)
 list.Pop() // removes/returns `4`
 list.Push(8) // appends `8`
 ```
@@ -11,12 +11,14 @@ list.Push(8) // appends `8`
 **More**
 ```go
 val := glitter.
-    IntoList([]uint{0, 1, 2, 3, 4}).
-    Filter(func(i uint) bool { return i%2 == 0 }).
-    Map(func(val uint) uint {
+    List(0, 1, 2, 3, 4).
+    Filter(func(i int) bool { 
+        return i%2 == 0 
+    }).
+    Map(func(val int) int {
         return val * 2
-    }). // []uint{0, 4, 8}
-    Reduce(func(acc *uint, val uint) {
+    }). // []int{0, 4, 8}
+    Reduce(func(acc *int, val int) {
         *acc += val
     }) // 12
 ```

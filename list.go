@@ -1,34 +1,34 @@
 package glitter
 
-type List[T any] struct {
+type Iter[T any] struct {
 	items []T
 }
 
-func NewList[T any]() *List[T] {
-	return &List[T]{}
+func NewList[T any]() *Iter[T] {
+	return &Iter[T]{}
 }
 
-func MakeList[T any](size uint) *List[T] {
-	return &List[T]{
+func MakeList[T any](size uint) *Iter[T] {
+	return &Iter[T]{
 		items: make([]T, size),
 	}
 }
 
-func IntoList[T any](slice []T) *List[T] {
-	return &List[T]{
-		items: slice,
+func List[T any](vals ...T) *Iter[T] {
+	return &Iter[T]{
+		items: vals,
 	}
 }
 
-func (l *List[T]) Unwrap() []T {
+func (l *Iter[T]) Unwrap() []T {
 	return l.items
 }
 
-func (l *List[T]) Push(val T) {
+func (l *Iter[T]) Push(val T) {
 	l.items = append(l.items, val)
 }
 
-func (l *List[T]) Pop() T {
+func (l *Iter[T]) Pop() T {
 	var val T
 	if len(l.items) > 0 {
 		val = l.items[len(l.items)-1]
@@ -38,24 +38,24 @@ func (l *List[T]) Pop() T {
 
 }
 
-func (l List[T]) Map(f func(val T) T) List[T] {
+func (l Iter[T]) Map(f func(val T) T) Iter[T] {
 	for i, item := range l.items {
 		l.items[i] = f(item)
 	}
 	return l
 }
 
-func (l List[T]) Filter(f func(val T) bool) *List[T] {
+func (l Iter[T]) Filter(f func(val T) bool) *Iter[T] {
 	filtered := []T{}
 	for _, item := range l.items {
 		if f(item) {
 			filtered = append(filtered, item)
 		}
 	}
-	return IntoList(filtered)
+	return List(filtered...)
 }
 
-func (l List[T]) Find(f func(val T) bool) (T, bool) {
+func (l Iter[T]) Find(f func(val T) bool) (T, bool) {
 	for _, item := range l.items {
 		if f(item) {
 			return item, true
@@ -65,7 +65,7 @@ func (l List[T]) Find(f func(val T) bool) (T, bool) {
 	return zero, false
 }
 
-func (l List[T]) Reduce(f func(acc *T, val T)) *T {
+func (l Iter[T]) Reduce(f func(acc *T, val T)) *T {
 	acc := new(T)
 	for _, item := range l.items {
 		f(acc, item)
@@ -73,14 +73,14 @@ func (l List[T]) Reduce(f func(acc *T, val T)) *T {
 	return acc
 }
 
-func (l List[T]) Len() int {
+func (l Iter[T]) Len() int {
 	return len(l.items)
 }
 
-func Map[T, R any](list List[T], f func(T) R) *List[R] {
+func Map[T, R any](list Iter[T], f func(T) R) *Iter[R] {
 	result := make([]R, len(list.items))
 	for i, item := range list.items {
 		result[i] = f(item)
 	}
-	return IntoList(result)
+	return List(result...)
 }

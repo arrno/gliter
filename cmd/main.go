@@ -8,18 +8,18 @@ import (
 
 func main() {
 	// push pop
-	list := glitter.IntoList([]uint{0, 1, 2, 3, 4})
+	list := glitter.List(0, 1, 2, 3, 4)
 	fmt.Println(list.Pop())
 	list.Push(8)
 	fmt.Println(list)
 	// lambda
 	newList := glitter.
-		IntoList([]uint{0, 1, 2, 3, 4}).
-		Filter(func(i uint) bool { return i%2 == 0 }).
-		Map(func(val uint) uint {
+		List(0, 1, 2, 3, 4).
+		Filter(func(i int) bool { return i%2 == 0 }).
+		Map(func(val int) int {
 			return val * 2
 		}).
-		Reduce(func(acc *uint, val uint) {
+		Reduce(func(acc *int, val int) {
 			*acc += val
 		})
 	fmt.Println(*newList)
