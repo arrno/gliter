@@ -14,7 +14,7 @@ val := glitter.
     List(0, 1, 2, 3, 4).
     Filter(func(i int) bool { 
         return i%2 == 0 
-    }).
+    }). // []int{0, 2, 4}
     Map(func(val int) int {
         return val * 2
     }). // []int{0, 4, 8}
