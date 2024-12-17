@@ -1,5 +1,8 @@
 # Glitter ✨
-**Iter tools for Go Lang**
+**Iter tools for Go Lang!** This package has two utilities:
+
+- **Iter tools:** Light generic slice wrapper for alternative functional/chaining syntax similar to Rust/Typescript.
+- **Async iter tools:** Simple utilities for wrapping regular functions in light async wrappers to do fan-out/fan-in and async-pipeline patterns.
 
 ## Iter tools
 
@@ -47,11 +50,13 @@ for _, item := range list.Iter() {
 
 Map to alt type via `Map(list, func(in) out)`
 
+Something missing? Open a PR. **Contributions welcome!**
+
 ## Async iter tools
 
 **In parallel**
 
-Run a series of functions in parallel and collect results **preserving order at no cost!**.
+Run a series of functions in parallel and collect results **preserving order at no cost.**.
 
 ```go
 tasks := []func() (string, error){
@@ -65,7 +70,7 @@ tasks := []func() (string, error){
         return "Async!", nil
     },
 }
-
+// Run all tasks at the same time and collect results/err
 results, err := glitter.InParallel(tasks)
 if err != nil {
     panic(err)
@@ -79,9 +84,9 @@ for _, result := range results {
 
 **Pipelines**
 
-Orchestrate a series of functions into an branching async pipeline with the `Pipeline` type.
+Orchestrate a series of functions into a branching async pipeline with the `Pipeline` type.
 
-Regular functions including a generator:
+Example of regular functions including a generator:
 
 ```go
 func example_gen() func() (int, bool) {
@@ -105,7 +110,7 @@ func example_end(i int) (int, error) {
 }
 ```
 
-Assemble into async pipeline with automatic branching:
+Assemble the functions into a new async pipeline with automatic branching using `NewPipeline`, `Stage`, and `Run`:
 
 ```go
 glitter.NewPipeline(example_gen()).
