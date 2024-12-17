@@ -9,7 +9,6 @@ import (
 TODO:
 listen for errors
 Return something useful
-Stage forking
 */
 
 type stage[T any] []func(data T) (T, error)
@@ -50,9 +49,9 @@ func (p *Pipeline[T]) Run() {
 			}
 		}
 	}()
-	errChans := make([]chan error, len(p.stages))
-	prevOut := dataChan
-	for i, stage := range p.stages {
+	errChans := List[chan error]()
+	prevOuts := List(dataChan)
+	for _, stage := range p.stages {
 		do := func(inChan <-chan T, f func(data T) (T, error)) (outChan chan T, errChan chan error) {
 			wg.Add(1)
 			errChan = make(chan error)
@@ -89,20 +88,35 @@ func (p *Pipeline[T]) Run() {
 			}()
 			return
 		}
-		outChan, errChan := do(prevOut, stage[0]) // for now no forking
-		errChans[i] = errChan
-		prevOut = outChan
-	}
-	// Drain end of pipeline
-	go func() {
-		for {
-			select {
-			case <-done:
-				return
-			case val := <-prevOut:
-				fmt.Println(val)
+		outChans := List[chan T]()
+
+		for _, po := range prevOuts.Iter() { // honor cum sum of prev forks
+			forkOut := TeeBy(po, done, len(stage))
+			for i, f := range stage { // for current stage
+				outChan, errChan := do(forkOut[i], f)
+				errChans.Push(errChan)
+				outChans.Push(outChan)
 			}
 		}
-	}()
+		prevOuts = outChans
+	}
+	// Drain end of pipeline
+	for _, prevOut := range prevOuts.Iter() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-done:
+					return
+				case val, ok := <-prevOut:
+					if !ok {
+						return
+					}
+					fmt.Println(val)
+				}
+			}
+		}()
+	}
 	wg.Wait()
 }

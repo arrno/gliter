@@ -1,5 +1,7 @@
 package glitter
 
+import "slices"
+
 type Iter[T any] struct {
 	items []T
 }
@@ -21,6 +23,10 @@ func List[T any](vals ...T) *Iter[T] {
 }
 
 func (l *Iter[T]) Unwrap() []T {
+	return l.items
+}
+
+func (l *Iter[T]) Iter() []T {
 	return l.items
 }
 
@@ -73,8 +79,36 @@ func (l Iter[T]) Reduce(f func(acc *T, val T)) *T {
 	return acc
 }
 
+func (l Iter[T]) Reverse() Iter[T] {
+	for i, j := 0, len(l.items)-1; i < j; i, j = i+1, j-1 {
+		l.items[i], l.items[j] = l.items[j], l.items[i]
+	}
+	return l
+}
+
 func (l Iter[T]) Len() int {
 	return len(l.items)
+}
+
+func (l Iter[T]) At(index int) T {
+	return l.items[index]
+}
+
+func (l Iter[T]) Delete(index int) Iter[T] {
+	ret := make([]T, 0)
+	ret = append(ret, l.items[:index]...)
+	l.items = append(ret, l.items[index+1:]...)
+	return l
+}
+
+func (l Iter[T]) Insert(val T, index int) Iter[T] {
+	l.items = slices.Insert(l.items, index, val)
+	return l
+}
+
+func (l Iter[T]) Slice(start, stop int) Iter[T] {
+	l.items = l.items[start:stop]
+	return l
 }
 
 func Map[T, R any](list Iter[T], f func(T) R) *Iter[R] {
