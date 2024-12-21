@@ -5,17 +5,16 @@ import (
 	"sync"
 )
 
-/*
-TODO:
-listen for errors
-Return something useful
-*/
+type PLConfig struct {
+	Log bool
+}
 
 type stage[T any] []func(data T) (T, error)
 
 type Pipeline[T any] struct {
 	generator func() (T, bool)
 	stages    []stage[T]
+	config    PLConfig
 }
 
 func NewPipeline[T any](gen func() (T, bool)) *Pipeline[T] {
@@ -29,11 +28,23 @@ func (p *Pipeline[T]) Stage(st stage[T]) *Pipeline[T] {
 	return p
 }
 
+func (p *Pipeline[T]) Config(config PLConfig) *Pipeline[T] {
+	p.config = config
+	return p
+}
+
+func (p *Pipeline[T]) handleLog(val T) {
+	if p.config.Log {
+		fmt.Println(val)
+	}
+}
+
 func (p *Pipeline[T]) Run() {
 	done := make(chan interface{})
 	dataChan := make(chan T)
 	var wg sync.WaitGroup
 	wg.Add(1)
+	// Init generator
 	go func() {
 		defer func() {
 			close(dataChan)
@@ -41,16 +52,16 @@ func (p *Pipeline[T]) Run() {
 		}()
 		val, con := p.generator()
 		for con {
-			select {
-			case dataChan <- val:
+			if writeOrDone(val, dataChan, done) {
 				val, con = p.generator()
-			case <-done:
+			} else {
 				return
 			}
 		}
 	}()
 	errChans := List[chan error]()
 	prevOuts := List(dataChan)
+	// Chain stages
 	for _, stage := range p.stages {
 		do := func(inChan <-chan T, f func(data T) (T, error)) (outChan chan T, errChan chan error) {
 			wg.Add(1)
@@ -63,26 +74,20 @@ func (p *Pipeline[T]) Run() {
 					wg.Done()
 				}()
 				for {
-					select {
-					case <-done:
-						return
-					case val, ok := <-inChan:
-						if !ok {
-							return
-						}
+					if val, ok := readOrDone(inChan, done); ok {
 						out, err := f(val)
 						if err != nil {
-							select {
-							case <-done:
+							if writeOrDone(err, errChan, done) {
+								continue
+							} else {
 								return
-							case errChan <- err:
 							}
 						}
-						select {
-						case <-done:
+						if !writeOrDone(out, outChan, done) {
 							return
-						case outChan <- out:
 						}
+					} else {
+						return
 					}
 				}
 			}()
@@ -90,7 +95,7 @@ func (p *Pipeline[T]) Run() {
 		}
 		outChans := List[chan T]()
 
-		for _, po := range prevOuts.Iter() { // honor cum sum of prev forks
+		for _, po := range prevOuts.Iter() { // honor cumulative of prev forks
 			forkOut := TeeBy(po, done, len(stage))
 			for i, f := range stage { // for current stage
 				outChan, errChan := do(forkOut[i], f)
@@ -100,20 +105,30 @@ func (p *Pipeline[T]) Run() {
 		}
 		prevOuts = outChans
 	}
+	// Listen for errors
+	errBuff := make(chan error, 1)
+	for _, errChan := range errChans.Iter() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err, ok := readOrDone(errChan, done); ok {
+				if writeOrDone(err, errBuff, done) {
+					// Will only reach once since err buffer has cap of 1
+					close(done)
+				}
+			}
+		}()
+	}
 	// Drain end of pipeline
 	for _, prevOut := range prevOuts.Iter() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for {
-				select {
-				case <-done:
+				if val, ok := readOrDone(prevOut, done); ok {
+					p.handleLog(val)
+				} else {
 					return
-				case val, ok := <-prevOut:
-					if !ok {
-						return
-					}
-					fmt.Println(val)
 				}
 			}
 		}()

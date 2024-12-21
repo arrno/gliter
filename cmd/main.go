@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/arrno/glitter"
 )
 
@@ -24,33 +22,13 @@ func main() {
 	// 	})
 	// fmt.Println(*newList)
 
-	// MainPipeline()
-
-	tasks := []func() (string, error){
-		func() (string, error) {
-			return "Hello", nil
-		},
-		func() (string, error) {
-			return ", ", nil
-		},
-		func() (string, error) {
-			return "Async!", nil
-		},
-	}
-
-	results, err := glitter.InParallel(tasks)
-	if err != nil {
-		panic(err)
-	}
-
-	for _, result := range results {
-		fmt.Print(result)
-	}
+	MainPipeline()
 
 }
 
 func MainPipeline() {
 	glitter.NewPipeline(example_gen()).
+		Config(glitter.PLConfig{Log: true}).
 		Stage(
 			[]func(i int) (int, error){
 				example_mid, // branch A

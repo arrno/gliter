@@ -65,3 +65,22 @@ func TeeBy[T any](in <-chan T, done <-chan interface{}, n int) (outR []<-chan T)
 
 	return
 }
+
+func writeOrDone[T any](val T, write chan T, done chan any) bool {
+	select {
+	case write <- val:
+		return true
+	case <-done:
+		return false
+	}
+}
+
+func readOrDone[T any](read <-chan T, done chan any) (T, bool) {
+	select {
+	case val, ok := <-read:
+		return val, ok
+	case <-done:
+		var zero T
+		return zero, false
+	}
+}
