@@ -6,7 +6,7 @@
 
 ## Async iter tools
 
-**In parallel**
+### In parallel
 
 Run a series of functions in parallel and collect results **preserving order at no cost.**.
 
@@ -34,7 +34,7 @@ for _, result := range results {
 }
 ```
 
-**Pipelines**
+### Pipelines
 
 Orchestrate a series of functions into a branching async pipeline with the `Pipeline` type.
 
