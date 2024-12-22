@@ -37,7 +37,7 @@ Also...
 - `list.At(i)`
 - `list.Slice(start, stop)`
 - `list.Delete(index)`
-- `list.Insert("value", index)`
+- `list.Insert(index, "value")`
 
 Unwrap back into slice via `list.Iter()` or `list.Unwrap()`
 
@@ -89,7 +89,7 @@ Orchestrate a series of functions into a branching async pipeline with the `Pipe
 Example of regular functions including a generator:
 
 ```go
-func example_gen() func() (int, bool) {
+func exampleGen() func() (int, bool) {
 	data := []int{1, 2, 3, 4, 5}
 	index := -1
 	return func() (int, bool) {
@@ -101,11 +101,11 @@ func example_gen() func() (int, bool) {
 	}
 }
 
-func example_mid(i int) (int, error) {
+func exampleMid(i int) (int, error) {
 	return i * 2, nil
 }
 
-func example_end(i int) (int, error) {
+func exampleEnd(i int) (int, error) {
 	return i * i, nil
 }
 ```
@@ -113,16 +113,16 @@ func example_end(i int) (int, error) {
 Assemble the functions into a new async pipeline with automatic branching using `NewPipeline`, `Stage`, and `Run`:
 
 ```go
-glitter.NewPipeline(example_gen()).
+glitter.NewPipeline(exampleGen()).
     Stage(
         []func(i int) (int, error){
-            example_mid, // branch A
-            example_mid, // branch B
+            exampleMid, // branch A
+            exampleMid, // branch B
         },
     ).
     Stage(
         []func(i int) (int, error){
-            example_end,
+            exampleEnd,
         },
     ).
     Run()

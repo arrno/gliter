@@ -39,7 +39,7 @@ func (p *Pipeline[T]) handleLog(val T) {
 	}
 }
 
-func (p *Pipeline[T]) Run() {
+func (p *Pipeline[T]) Run() error {
 	done := make(chan interface{})
 	dataChan := make(chan T)
 	var wg sync.WaitGroup
@@ -134,4 +134,10 @@ func (p *Pipeline[T]) Run() {
 		}()
 	}
 	wg.Wait()
+	var err error
+	select {
+	case err = <-errBuff:
+	default:
+	}
+	return err
 }

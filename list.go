@@ -22,7 +22,7 @@ func List[T any](vals ...T) *Iter[T] {
 	}
 }
 
-func (l *Iter[T]) Unwrap() []T {
+func (l Iter[T]) Unwrap() []T {
 	return l.items
 }
 
@@ -101,7 +101,7 @@ func (l Iter[T]) Delete(index int) Iter[T] {
 	return l
 }
 
-func (l Iter[T]) Insert(val T, index int) Iter[T] {
+func (l Iter[T]) Insert(index int, val T) Iter[T] {
 	l.items = slices.Insert(l.items, index, val)
 	return l
 }
