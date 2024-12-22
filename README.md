@@ -84,6 +84,8 @@ Any time we choose to add multiple handlers in a single stage, we are forking th
 
 Data always flows downstream from generator through stages sequentially. When a fork occurs, all downstream stages are implicitly duplicated to exist in each stream.
 
+Optionally set pipeline config via `pipeline.Config(glitter.PLConfig{Log: true})`
+
 ## Iter tools
 
 The `List` Type
