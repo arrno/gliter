@@ -14,7 +14,7 @@ func TestInParallel(t *testing.T) {
 			return "Hello", nil
 		},
 		func() (string, error) {
-			return ",", nil
+			return ", ", nil
 		},
 		func() (string, error) {
 			return "Async!", nil
@@ -22,7 +22,7 @@ func TestInParallel(t *testing.T) {
 	}
 	results, err := InParallel(tasks)
 	assert.Nil(t, err)
-	assert.True(t, reflect.DeepEqual([]string{"Hello", ",", "Async!"}, results))
+	assert.True(t, reflect.DeepEqual([]string{"Hello", ", ", "Async!"}, results))
 }
 
 func TestInParallelErr(t *testing.T) {

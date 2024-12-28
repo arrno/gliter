@@ -18,7 +18,7 @@ tasks := []func() (string, error){
         return "Hello", nil
     },
     func() (string, error) {
-        return ",", nil
+        return ", ", nil
     },
     func() (string, error) {
         return "Async!", nil
@@ -96,7 +96,7 @@ Optionally set pipeline config via `pipeline.Config(gliter.PLConfig{Log: true})`
 
 #### Throttle
 
-What if our end stage results in a high number of concurrent output streams that overwhelms a destination DB or API? Use the throttle stage to reign in concurrent streams like this:
+What if our end stage results in a high number of concurrent output streams that overwhelms a destination DB or API? Use the throttle stage to rein in concurrent streams like this:
 ```go
 // With concurrency throttling
 gliter.NewPipeline(exampleGen()).
