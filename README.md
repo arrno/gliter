@@ -1,4 +1,4 @@
-# Glitter ✨
+# GLiter ✨
 **Iter tools for Go Lang!** This package has two utilities:
 
 - **Async iter tools:** Simple utilities for wrapping regular functions in light async wrappers to do fan-out/fan-in and async-pipeline patterns.
@@ -23,7 +23,7 @@ tasks := []func() (string, error){
     },
 }
 // Run all tasks at the same time and collect results/err
-results, err := glitter.InParallel(tasks)
+results, err := gliter.InParallel(tasks)
 if err != nil {
     panic(err)
 }
@@ -65,7 +65,7 @@ func exampleEnd(i int) (int, error) {
 Assemble the functions into a new async pipeline with automatic branching using `NewPipeline`, `Stage`, and `Run`:
 
 ```go
-glitter.NewPipeline(exampleGen()).
+gliter.NewPipeline(exampleGen()).
     Stage(
         []func(i int) (int, error){
             exampleMid, // branch A
@@ -84,14 +84,16 @@ Any time we choose to add multiple handlers in a single stage, we are forking th
 
 Data always flows downstream from generator through stages sequentially. When a fork occurs, all downstream stages are implicitly duplicated to exist in each stream.
 
-Optionally set pipeline config via `pipeline.Config(glitter.PLConfig{Log: true})`
+There is no distinct end stage. Any side-effects/outputs like db writes or API posts should be handled inside a Stage function wherever appropriate.
+
+Optionally set pipeline config via `pipeline.Config(gliter.PLConfig{Log: true})`
 
 ## Iter tools
 
 The `List` Type
 
 ```go
-list := glitter.List(0, 1, 2, 3, 4)
+list := gliter.List(0, 1, 2, 3, 4)
 list.Pop() // removes/returns `4`
 list.Push(8) // appends `8`
 ```
@@ -99,7 +101,7 @@ list.Push(8) // appends `8`
 Chaining functions on a list
 
 ```go
-value := glitter.
+value := gliter.
     List(0, 1, 2, 3, 4).
     Filter(func(i int) bool { 
         return i%2 == 0 
@@ -124,7 +126,7 @@ Also...
 Unwrap back into slice via `list.Iter()` or `list.Unwrap()`
 
 ```go
-list := glitter.List(0, 1, 2, 3, 4)
+list := gliter.List(0, 1, 2, 3, 4)
 for _, item := range list.Iter() {
     fmt.Println(item)
 }

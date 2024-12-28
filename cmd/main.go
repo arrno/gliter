@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/arrno/glitter"
+	"github.com/arrno/gliter"
 )
 
 func main() {
@@ -9,8 +9,8 @@ func main() {
 }
 
 func MainPipeline() {
-	glitter.NewPipeline(example_gen()).
-		Config(glitter.PLConfig{Log: true}).
+	gliter.NewPipeline(example_gen()).
+		Config(gliter.PLConfig{Log: true}).
 		Stage(
 			[]func(i int) (int, error){
 				example_mid, // branch A

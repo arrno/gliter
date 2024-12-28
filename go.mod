@@ -1,4 +1,4 @@
-module github.com/arrno/glitter
+module github.com/arrno/gliter
 
 go 1.22.0
 

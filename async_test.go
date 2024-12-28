@@ -1,4 +1,4 @@
-package glitter
+package gliter
 
 import (
 	"errors"

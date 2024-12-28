@@ -1,4 +1,4 @@
-package glitter
+package gliter
 
 func InParallel[T any](funcs []func() (T, error)) ([]T, error) {
 	type orderedResult struct {
