@@ -100,26 +100,26 @@ What if our end stage results in a high number of concurrent output streams that
 ```go
 // With concurrency throttling
 gliter.NewPipeline(exampleGen()).
-	Stage(
-		[]func(i int) (int, error){
-			exampleMid, // branch A
-			exampleMid, // branch B
-		},
-	).
-	Stage(
-		[]func(i int) (int, error){
-			exampleMid, // branches A.C, B.C
-			exampleMid, // branches A.D, B.D
-			exampleMid, // branches A.E, B.E
-		},
-	).
+    Stage(
+        []func(i int) (int, error){
+            exampleMid, // branch A
+            exampleMid, // branch B
+        },
+    ).
+    Stage(
+        []func(i int) (int, error){
+            exampleMid, // branches A.C, B.C
+            exampleMid, // branches A.D, B.D
+            exampleMid, // branches A.E, B.E
+        },
+    ).
     Throttle(2). // merge into branches X, Z
-	Stage(
-		[]func(i int) (int, error){
-			exampleEnd,
-		},
-	).
-	Run()
+    Stage(
+        []func(i int) (int, error){
+            exampleEnd,
+        },
+    ).
+    Run()
 ```
 
 ## Iter tools
