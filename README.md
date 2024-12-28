@@ -82,13 +82,19 @@ gliter.NewPipeline(exampleGen()).
     Run()
 ```
 
+#### Behavior
+
 Any time we choose to add multiple handlers in a single stage, we are forking the pipeline that many times. If for example we add two stages, each containing two functions, we will produce four output streams at the end of the pipeline. 
 
 Data always flows downstream from generator through stages sequentially. When a fork occurs, all downstream stages are implicitly duplicated to exist in each stream.
 
 There is no distinct end stage. Any side-effects/outputs like db writes or API posts should be handled inside a Stage function wherever appropriate.
 
+#### Config
+
 Optionally set pipeline config via `pipeline.Config(gliter.PLConfig{Log: true})`
+
+#### Throttle
 
 What if our end stage results in a high number of concurrent output streams that overwhelms a destination DB or API? Use the throttle stage to reign in concurrent streams like this:
 ```go
@@ -102,9 +108,9 @@ gliter.NewPipeline(exampleGen()).
 	).
 	Stage(
 		[]func(i int) (int, error){
-			exampleMid, // branches A.C B.C
-			exampleMid, // branches A.D B.D
-			exampleMid, // branches A.E B.E
+			exampleMid, // branches A.C, B.C
+			exampleMid, // branches A.D, B.D
+			exampleMid, // branches A.E, B.E
 		},
 	).
     Throttle(2). // merge into branches X, Z

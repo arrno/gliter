@@ -81,9 +81,9 @@ func TestPipelineFork(t *testing.T) {
 		).
 		Stage(
 			[]func(i int) (int, error){
-				exampleMid, // branches A.C B.C
-				exampleMid, // branches A.D B.D
-				exampleMid, // branches A.E B.E
+				exampleMid, // branches A.C, B.C
+				exampleMid, // branches A.D, B.D
+				exampleMid, // branches A.E, B.E
 			},
 		).
 		Stage(
