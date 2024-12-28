@@ -8,6 +8,8 @@
 
 ### In parallel
 
+AKA Fan-in/Fan-out
+
 Run a series of functions in parallel and collect results **preserving order at no cost.**.
 
 ```go
