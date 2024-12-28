@@ -43,6 +43,9 @@ func (p *Pipeline[T]) Stage(fs []func(data T) (T, error)) *Pipeline[T] {
 }
 
 func (p *Pipeline[T]) Throttle(by uint) *Pipeline[T] {
+	if by < 1 {
+		by = 1
+	}
 	p.stages = append(p.stages, stage[T]{stageType: THROTTLE, handlers: make([]func(data T) (T, error), by)})
 	return p
 }

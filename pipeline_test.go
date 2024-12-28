@@ -50,6 +50,24 @@ func TestPipelineErr(t *testing.T) {
 		).
 		Run()
 	assert.NotNil(t, err)
+
+	// With throttle
+	_, exampleEnd = makeEnd()
+	err = NewPipeline(exampleGen()).
+		Stage(
+			[]func(i int) (int, error){
+				exampleMid,    // branch A
+				exampleMidErr, // branch B
+			},
+		).
+		Stage(
+			[]func(i int) (int, error){
+				exampleEnd,
+			},
+		).
+		Throttle(1).
+		Run()
+	assert.NotNil(t, err)
 }
 
 func TestPipelineFork(t *testing.T) {
@@ -92,7 +110,43 @@ func TestPipelineFork(t *testing.T) {
 }
 
 func TestPipelineThrottle(t *testing.T) {
-	// TODO
+	col, exampleEnd := makeEnd()
+	err := NewPipeline(exampleGen()).
+		Stage(
+			[]func(i int) (int, error){
+				exampleMid, // branch A
+				exampleMid, // branch B
+			},
+		).
+		Stage(
+			[]func(i int) (int, error){
+				exampleMid, // branches A.C, B.C
+				exampleMid, // branches A.D, B.D
+				exampleMid, // branches A.E, B.E
+			},
+		).
+		Throttle(2). // merge into branches X, Z
+		Stage(
+			[]func(i int) (int, error){
+				exampleEnd,
+			},
+		).
+		Run()
+	// 1, 2, 3, 4, 5
+	// 16, 64, 144, 246, 400
+	assert.Nil(t, err)
+	expected := []int{
+		16, 16, 16, 16, 16, 16,
+		64, 64, 64, 64, 64, 64,
+		144, 144, 144, 144, 144, 144,
+		256, 256, 256, 256, 256, 256,
+		400, 400, 400, 400, 400, 400,
+	}
+	actual := col.items
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i] < actual[j]
+	})
+	assert.True(t, reflect.DeepEqual(expected, actual))
 }
 
 type Collect[T any] struct {

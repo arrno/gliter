@@ -88,6 +88,32 @@ There is no distinct end stage. Any side-effects/outputs like db writes or API p
 
 Optionally set pipeline config via `pipeline.Config(gliter.PLConfig{Log: true})`
 
+What if our end stage results in a high number of concurrent output streams that overwhelms a destination DB or API? Use the throttle stage to reign in concurrent streams like this:
+```go
+// With concurrency throttling
+gliter.NewPipeline(exampleGen()).
+	Stage(
+		[]func(i int) (int, error){
+			exampleMid, // branch A
+			exampleMid, // branch B
+		},
+	).
+	Stage(
+		[]func(i int) (int, error){
+			exampleMid, // branches A.C B.C
+			exampleMid, // branches A.D B.D
+			exampleMid, // branches A.E B.E
+		},
+	).
+    Throttle(2). // merge into branches X, Z
+	Stage(
+		[]func(i int) (int, error){
+			exampleEnd,
+		},
+	).
+	Run()
+```
+
 ## Iter tools
 
 The `List` Type
