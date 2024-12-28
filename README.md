@@ -44,23 +44,23 @@ Example of regular functions including a generator:
 
 ```go
 func exampleGen() func() (int, bool) {
-	data := []int{1, 2, 3, 4, 5}
-	index := -1
-	return func() (int, bool) {
-		index++
-		if index == len(data) {
-			return 0, false
-		}
-		return data[index], true
-	}
+    data := []int{1, 2, 3, 4, 5}
+    index := -1
+    return func() (int, bool) {
+        index++
+        if index == len(data) {
+            return 0, false
+        }
+        return data[index], true
+    }
 }
 
 func exampleMid(i int) (int, error) {
-	return i * 2, nil
+    return i * 2, nil
 }
 
 func exampleEnd(i int) (int, error) {
-	return i * i, nil
+    return i * i, nil
 }
 ```
 
