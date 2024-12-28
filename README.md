@@ -1,5 +1,5 @@
 # GLiter ✨
-**Iter tools for Go Lang!** This package has two utilities:
+**Go Lang iter tools!** This package has two utilities:
 
 - **Async iter tools:** Simple utilities for wrapping regular functions in light async wrappers to do fan-out/fan-in and async-pipeline patterns.
 - **Iter tools:** Light generic slice wrapper for alternative functional/chaining syntax similar to Rust/Typescript.
