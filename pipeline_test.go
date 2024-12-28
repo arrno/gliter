@@ -91,6 +91,10 @@ func TestPipelineFork(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(expected, actual))
 }
 
+func TestPipelineThrottle(t *testing.T) {
+	// TODO
+}
+
 type Collect[T any] struct {
 	mu    sync.Mutex
 	items []T

@@ -22,6 +22,12 @@ func List[T any](vals ...T) *Iter[T] {
 	}
 }
 
+func SliceToList[T any](s []T) *Iter[T] {
+	return &Iter[T]{
+		items: s,
+	}
+}
+
 func (l Iter[T]) Unwrap() []T {
 	return l.items
 }

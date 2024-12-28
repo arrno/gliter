@@ -9,7 +9,7 @@ type stageType int
 
 const (
 	FORK stageType = iota
-	CONVERGE
+	THROTTLE
 )
 
 type PLConfig struct {
@@ -42,11 +42,10 @@ func (p *Pipeline[T]) Stage(fs []func(data T) (T, error)) *Pipeline[T] {
 	return p
 }
 
-// TODO honor me
-// func (p *Pipeline[T]) Converge() *Pipeline[T] {
-// 	p.stages = append(p.stages, stage[T]{stageType: CONVERGE})
-// 	return p
-// }
+func (p *Pipeline[T]) Throttle(by uint) *Pipeline[T] {
+	p.stages = append(p.stages, stage[T]{stageType: THROTTLE, handlers: make([]func(data T) (T, error), by)})
+	return p
+}
 
 func (p *Pipeline[T]) Config(config PLConfig) *Pipeline[T] {
 	p.config = config
@@ -57,6 +56,37 @@ func (p *Pipeline[T]) handleLog(val T) {
 	if p.config.Log {
 		fmt.Println(val)
 	}
+}
+
+func (p *Pipeline[T]) handleStageFunc(inChan <-chan T, f func(data T) (T, error), done <-chan interface{}, wg *sync.WaitGroup) (outChan chan T, errChan chan error) {
+	wg.Add(1)
+	errChan = make(chan error)
+	outChan = make(chan T)
+	go func() {
+		defer func() {
+			close(outChan)
+			close(errChan)
+			wg.Done()
+		}()
+		for {
+			if val, ok := readOrDone(inChan, done); ok {
+				out, err := f(val)
+				if err != nil {
+					if writeOrDone(err, errChan, done) {
+						continue
+					} else {
+						return
+					}
+				}
+				if !writeOrDone(out, outChan, done) {
+					return
+				}
+			} else {
+				return
+			}
+		}
+	}()
+	return
 }
 
 func (p *Pipeline[T]) Run() error {
@@ -83,42 +113,16 @@ func (p *Pipeline[T]) Run() error {
 	prevOuts := List(dataChan)
 	// Chain stages
 	for _, stage := range p.stages {
-		do := func(inChan <-chan T, f func(data T) (T, error)) (outChan chan T, errChan chan error) {
-			wg.Add(1)
-			errChan = make(chan error)
-			outChan = make(chan T)
-			go func() {
-				defer func() {
-					close(outChan)
-					close(errChan)
-					wg.Done()
-				}()
-				for {
-					if val, ok := readOrDone(inChan, done); ok {
-						out, err := f(val)
-						if err != nil {
-							if writeOrDone(err, errChan, done) {
-								continue
-							} else {
-								return
-							}
-						}
-						if !writeOrDone(out, outChan, done) {
-							return
-						}
-					} else {
-						return
-					}
-				}
-			}()
-			return
+		if stage.stageType == THROTTLE {
+			prevOuts = SliceToList(ThrottleBy[T](prevOuts.Iter(), done, len(stage.handlers)))
+			continue
 		}
 		outChans := List[chan T]()
 
 		for _, po := range prevOuts.Iter() { // honor cumulative of prev forks
 			forkOut := TeeBy(po, done, len(stage.handlers))
 			for i, f := range stage.handlers { // for current stage
-				outChan, errChan := do(forkOut[i], f)
+				outChan, errChan := p.handleStageFunc(forkOut[i], f, done, &wg)
 				errChans.Push(errChan)
 				outChans.Push(outChan)
 			}
