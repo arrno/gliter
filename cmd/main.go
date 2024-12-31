@@ -1,31 +1,37 @@
 package main
 
-import (
-	"github.com/arrno/gliter"
-)
+import "github.com/arrno/gliter"
 
 func main() {
 	MainPipeline()
 }
 
 func MainPipeline() {
-	gliter.NewPipeline(example_gen()).
+	gliter.NewPipeline(exampleGen()).
 		Config(gliter.PLConfig{Log: true}).
 		Stage(
 			[]func(i int) (int, error){
-				example_mid, // branch A
-				example_mid, // branch B
+				exampleMid, // branch A
+				exampleMid, // branch B
 			},
 		).
 		Stage(
 			[]func(i int) (int, error){
-				example_end,
+				exampleMid, // branches A.C, B.C
+				exampleMid, // branches A.D, B.D
+				exampleMid, // branches A.E, B.E
+			},
+		).
+		Throttle(2). // merge into branches X, Z
+		Stage(
+			[]func(i int) (int, error){
+				exampleEnd,
 			},
 		).
 		Run()
 }
 
-func example_gen() func() (int, bool) {
+func exampleGen() func() (int, bool) {
 	data := []int{1, 2, 3, 4, 5}
 	index := -1
 	return func() (int, bool) {
@@ -37,10 +43,10 @@ func example_gen() func() (int, bool) {
 	}
 }
 
-func example_mid(i int) (int, error) {
+func exampleMid(i int) (int, error) {
 	return i * 2, nil
 }
 
-func example_end(i int) (int, error) {
+func exampleEnd(i int) (int, error) {
 	return i * i, nil
 }
