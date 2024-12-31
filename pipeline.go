@@ -25,6 +25,7 @@ type Pipeline[T any] struct {
 	generator func() (T, bool)
 	stages    []stage[T]
 	config    PLConfig
+	tree      PLNode[T]
 }
 
 func NewPipeline[T any](gen func() (T, bool)) *Pipeline[T] {
@@ -57,14 +58,16 @@ func (p *Pipeline[T]) Config(config PLConfig) *Pipeline[T] {
 
 func (p *Pipeline[T]) handleLog(val T) {
 	if p.config.Log {
-		fmt.Println(val)
+		fmt.Printf("Emit -> %v\n", val)
 	}
 }
 
-func (p *Pipeline[T]) handleStageFunc(inChan <-chan T, f func(data T) (T, error), done <-chan interface{}, wg *sync.WaitGroup) (outChan chan T, errChan chan error) {
+func (p *Pipeline[T]) handleStageFunc(id string, inChan <-chan T, f func(data T) (T, error), done <-chan interface{}, wg *sync.WaitGroup) (outChan chan T, errChan chan error, node *PLNode[T]) {
 	wg.Add(1)
 	errChan = make(chan error)
 	outChan = make(chan T)
+	var val T
+	node = NewPLNodeAs(id, val)
 	go func() {
 		defer func() {
 			close(outChan)
@@ -74,6 +77,7 @@ func (p *Pipeline[T]) handleStageFunc(inChan <-chan T, f func(data T) (T, error)
 		for {
 			if val, ok := readOrDone(inChan, done); ok {
 				out, err := f(val)
+				node.IncAs(out)
 				if err != nil {
 					if writeOrDone(err, errChan, done) {
 						continue
@@ -98,6 +102,8 @@ func (p *Pipeline[T]) Run() error {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	// Init generator
+	var val T
+	root := NewPLNodeAs[T]("GEN", val)
 	go func() {
 		defer func() {
 			close(dataChan)
@@ -105,6 +111,7 @@ func (p *Pipeline[T]) Run() error {
 		}()
 		val, con := p.generator()
 		for con {
+			root.IncAs(val)
 			if writeOrDone(val, dataChan, done) {
 				val, con = p.generator()
 			} else {
@@ -114,23 +121,30 @@ func (p *Pipeline[T]) Run() error {
 	}()
 	errChans := List[chan error]()
 	prevOuts := List(dataChan)
+	prevNodes := List(root)
 	// Chain stages
-	for _, stage := range p.stages {
+	for idx, stage := range p.stages {
 		if stage.stageType == THROTTLE {
-			prevOuts = SliceToList(ThrottleBy[T](prevOuts.Iter(), done, len(stage.handlers)))
+			prevOuts = SliceToList(ThrottleBy(prevOuts.Iter(), done, len(stage.handlers)))
 			continue
 		}
-		outChans := List[chan T]()
 
-		for _, po := range prevOuts.Iter() { // honor cumulative of prev forks
+		outChans := List[chan T]()     // TODO optimize sizing
+		outNodes := List[*PLNode[T]]() // TODO optimize sizing
+
+		for j, po := range prevOuts.Iter() { // honor cumulative of prev forks
+			parentNode := prevNodes.At(j)
 			forkOut := TeeBy(po, done, len(stage.handlers))
 			for i, f := range stage.handlers { // for current stage
-				outChan, errChan := p.handleStageFunc(forkOut[i], f, done, &wg)
+				outChan, errChan, node := p.handleStageFunc(fmt.Sprintf("%d:%d:%d", idx, j, i), forkOut[i], f, done, &wg)
 				errChans.Push(errChan)
 				outChans.Push(outChan)
+				outNodes.Push(node)
+				parentNode.SpawnAs(node)
 			}
 		}
 		prevOuts = outChans
+		prevNodes = outNodes
 	}
 	// Listen for errors
 	errBuff := make(chan error, 1)
@@ -165,6 +179,9 @@ func (p *Pipeline[T]) Run() error {
 	select {
 	case err = <-errBuff:
 	default:
+	}
+	if p.config.Log {
+		root.PrintFullBF()
 	}
 	return err
 }

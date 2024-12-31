@@ -47,6 +47,15 @@ func (l *Iter[T]) Pop() T {
 		l.items = l.items[:len(l.items)-1]
 	}
 	return val
+}
+
+func (l *Iter[T]) FPop() T {
+	var val T
+	if len(l.items) > 0 {
+		val = l.items[0]
+		l.items = l.items[1:len(l.items)]
+	}
+	return val
 
 }
 

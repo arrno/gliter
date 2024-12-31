@@ -1,4 +1,5 @@
 # GLiter ✨
+
 **Go Lang iter tools!** This package has two utilities:
 
 - **Async iter tools:** Simple utilities for wrapping regular functions in light async wrappers to do fan-out/fan-in and async-pipeline patterns.
@@ -84,19 +85,44 @@ gliter.NewPipeline(exampleGen()).
 
 #### Behavior
 
-Any time we choose to add multiple handlers in a single stage, we are forking the pipeline that many times. If for example we add two stages, each containing two functions, we will produce four output streams at the end of the pipeline. 
+Any time we choose to add multiple handlers in a single stage, we are forking the pipeline that many times. If for example we add two stages, each containing two functions, we will produce four output streams at the end of the pipeline.
 
 Data always flows downstream from generator through stages sequentially. When a fork occurs, all downstream stages are implicitly duplicated to exist in each stream.
 
 There is no distinct end stage. Any side-effects/outputs like db writes or API posts should be handled inside a Stage function wherever appropriate.
 
-#### Config
+#### Log
 
-Optionally set pipeline config via `pipeline.Config(gliter.PLConfig{Log: true})`
+It may be helpful during testing to audit what is happening inside a pipeline.
+
+To do so, optionally set pipeline logging via `pipeline.Config(gliter.PLConfig{Log: true})`.
+
+```
+Emit -> 4
+Emit -> 16
+...
+Emit -> 100
++-------+-------+-------+
+| node  | count | value |
++-------+-------+-------+
+| GEN   | 5     | 5     |
+| 0:0:0 | 5     | 10    |
+| 0:0:1 | 5     | 10    |
+| 1:0:0 | 5     | 100   |
+| 1:1:0 | 5     | 100   |
++-------+-------+-------+
+```
+
+The node id shown in the table is constructed as stage-index:parent-index:func-index. For example, node id `4:1:2` would indicate the third function (idx 2) of the fifth stage (idx 4) branched from the second parent node (idx 1).
+
+"The second parent node" in this context can also be called the func at index 1 of the fourth stage.
+
+Throttle stages will not be logged but will increment the node id indexes.
 
 #### Throttle
 
 What if our end stage results in a high number of concurrent output streams that overwhelms a destination DB or API? Use the throttle stage to rein in concurrent streams like this:
+
 ```go
 // With concurrency throttling
 gliter.NewPipeline(exampleGen()).
@@ -137,8 +163,8 @@ Chaining functions on a list
 ```go
 value := gliter.
     List(0, 1, 2, 3, 4).
-    Filter(func(i int) bool { 
-        return i%2 == 0 
+    Filter(func(i int) bool {
+        return i%2 == 0
     }). // []int{0, 2, 4}
     Map(func(val int) int {
         return val * 2
@@ -149,10 +175,12 @@ value := gliter.
 ```
 
 Also...
+
 - `list.Find(func (i int) { return i%2 == 0 })`
 - `list.Len()`
 - `list.Reverse()`
 - `list.At(i)`
+- `list.FPop()`
 - `list.Slice(start, stop)`
 - `list.Delete(index)`
 - `list.Insert(index, "value")`
