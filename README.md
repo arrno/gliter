@@ -5,6 +5,8 @@
 - **Async iter tools:** Simple utilities for wrapping regular functions in light async wrappers to do fan-out/fan-in and async-pipeline patterns.
 - **Iter tools:** Light generic slice wrapper for alternative functional/chaining syntax similar to Rust/Typescript.
 
+ʕ◔ϖ◔ʔ
+
 ## Async iter tools
 
 ### In parallel
@@ -87,6 +89,8 @@ gliter.NewPipeline(exampleGen()).
 
 Any time we choose to add multiple handlers in a single stage, we are forking the pipeline that many times. If for example we add two stages, each containing two functions, we will produce four output streams at the end of the pipeline.
 
+> Although in the example, we forked into two branches with the same func `exampleMid`, in production, you will likely fork with unique functions that each represent a distinct mutation. If you are passing a pointer through the pipeline like a slice or map, you should clone the object within each transform function that alters it.
+
 Data always flows downstream from generator through stages sequentially. When a fork occurs, all downstream stages are implicitly duplicated to exist in each stream.
 
 There is no distinct end stage. Any side-effects/outputs like db writes or API posts should be handled inside a Stage function wherever appropriate.
@@ -147,6 +151,10 @@ gliter.NewPipeline(exampleGen()).
     ).
     Run()
 ```
+
+Here is a visual diagram of the pipeline the code produces:
+
+![Alt text](./diag/small-chart.png?raw=true "Title")
 
 ## Iter tools
 
