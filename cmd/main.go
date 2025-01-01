@@ -1,10 +1,6 @@
 package main
 
-import (
-	"time"
-
-	"github.com/arrno/gliter"
-)
+import "github.com/arrno/gliter"
 
 func main() {
 	MainPipeline()
@@ -12,44 +8,45 @@ func main() {
 
 func MainPipeline() {
 	gliter.NewPipeline(exampleGen()).
-		Config(gliter.PLConfig{Log: true}).
+		Config(gliter.PLConfig{LogStep: true}).
 		Stage(
-			[]func(val map[string]any) (map[string]any, error){
-				exampleNice,
-				exampleMean,
+			[]func(i int) (int, error){
+				exampleMid, // branch A
+				exampleMid, // branch B
 			},
 		).
 		Stage(
-			[]func(val map[string]any) (map[string]any, error){
+			[]func(i int) (int, error){
+				exampleMid, // branches A.C, B.C
+				exampleMid, // branches A.D, B.D
+				exampleMid, // branches A.E, B.E
+			},
+		).
+		Throttle(2). // merge into branches X, Z
+		Stage(
+			[]func(i int) (int, error){
 				exampleEnd,
 			},
 		).
 		Run()
 }
 
-func exampleGen() func() (map[string]any, bool) {
+func exampleGen() func() (int, bool) {
 	data := []int{1, 2, 3, 4, 5}
 	index := -1
-	return func() (map[string]any, bool) {
+	return func() (int, bool) {
 		index++
 		if index == len(data) {
-			return nil, false
+			return 0, false
 		}
-		return map[string]any{"Hello": data[index]}, true
+		return data[index], true
 	}
 }
 
-func exampleNice(val map[string]any) (map[string]any, error) {
-	val["NICE!!!"] = "!"
-	return val, nil
-}
-func exampleMean(val map[string]any) (map[string]any, error) {
-	time.Sleep(time.Duration(1) * time.Second)
-	val["MEAN???"] = "!!"
-	delete(val, "NICE!!!")
-	return val, nil
+func exampleMid(i int) (int, error) {
+	return i * 2, nil
 }
 
-func exampleEnd(val map[string]any) (map[string]any, error) {
-	return val, nil
+func exampleEnd(i int) (int, error) {
+	return i * i, nil
 }

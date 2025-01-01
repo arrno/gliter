@@ -13,7 +13,10 @@ const (
 )
 
 type PLConfig struct {
-	Log bool
+	LogAll   bool
+	LogEmit  bool
+	LogCount bool
+	LogStep  bool
 }
 
 type stage[T any] struct {
@@ -25,7 +28,6 @@ type Pipeline[T any] struct {
 	generator func() (T, bool)
 	stages    []stage[T]
 	config    PLConfig
-	tree      PLNode[T]
 }
 
 func NewPipeline[T any](gen func() (T, bool)) *Pipeline[T] {
@@ -57,17 +59,25 @@ func (p *Pipeline[T]) Config(config PLConfig) *Pipeline[T] {
 }
 
 func (p *Pipeline[T]) handleLog(val T) {
-	if p.config.Log {
+	if p.config.LogAll || p.config.LogEmit {
 		fmt.Printf("Emit -> %v\n", val)
 	}
 }
 
-func (p *Pipeline[T]) handleStageFunc(id string, inChan <-chan T, f func(data T) (T, error), done <-chan interface{}, wg *sync.WaitGroup) (outChan chan T, errChan chan error, node *PLNode[T]) {
+func (p *Pipeline[T]) handleStageFunc(
+	id string,
+	inChan <-chan T,
+	f func(data T) (T, error),
+	done <-chan interface{},
+	wg *sync.WaitGroup,
+	stepSignal chan<- any,
+) (outChan chan T, errChan chan error, node *PLNode[T]) {
 	wg.Add(1)
 	errChan = make(chan error)
 	outChan = make(chan T)
 	var val T
 	node = NewPLNodeAs(id, val)
+	incr := p.config.LogAll || p.config.LogCount || p.config.LogStep
 	go func() {
 		defer func() {
 			close(outChan)
@@ -77,7 +87,12 @@ func (p *Pipeline[T]) handleStageFunc(id string, inChan <-chan T, f func(data T)
 		for {
 			if val, ok := readOrDone(inChan, done); ok {
 				out, err := f(val)
-				node.IncAs(out)
+				if incr {
+					node.IncAs(out)
+				}
+				if p.config.LogStep {
+					stepSignal <- struct{}{}
+				}
 				if err != nil {
 					if writeOrDone(err, errChan, done) {
 						continue
@@ -104,6 +119,8 @@ func (p *Pipeline[T]) Run() error {
 	// Init generator
 	var val T
 	root := NewPLNodeAs[T]("GEN", val)
+	stepSignal := NewStepper(root).Run()
+	defer close(stepSignal)
 	go func() {
 		defer func() {
 			close(dataChan)
@@ -136,7 +153,7 @@ func (p *Pipeline[T]) Run() error {
 			parentNode := prevNodes.At(j)
 			forkOut := TeeBy(po, done, len(stage.handlers))
 			for i, f := range stage.handlers { // for current stage
-				outChan, errChan, node := p.handleStageFunc(fmt.Sprintf("%d:%d:%d", idx, j, i), forkOut[i], f, done, &wg)
+				outChan, errChan, node := p.handleStageFunc(fmt.Sprintf("%d:%d:%d", idx, j, i), forkOut[i], f, done, &wg, stepSignal)
 				errChans.Push(errChan)
 				outChans.Push(outChan)
 				outNodes.Push(node)
@@ -180,7 +197,7 @@ func (p *Pipeline[T]) Run() error {
 	case err = <-errBuff:
 	default:
 	}
-	if p.config.Log {
+	if p.config.LogAll || p.config.LogCount {
 		root.PrintFullBF()
 	}
 	return err

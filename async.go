@@ -20,7 +20,7 @@ func InParallel[T any](funcs []func() (T, error)) ([]T, error) {
 		}(i)
 	}
 	results := make([]T, len(funcs))
-	for _ = range len(funcs) {
+	for range len(funcs) {
 		select {
 		case err := <-errChan:
 			return nil, err

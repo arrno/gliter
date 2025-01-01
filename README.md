@@ -99,7 +99,7 @@ There is no distinct end stage. Any side-effects/outputs like db writes or API p
 
 It may be helpful during testing to audit what is happening inside a pipeline.
 
-To do so, optionally set pipeline logging via `pipeline.Config(gliter.PLConfig{Log: true})`.
+To do so, optionally set pipeline logging via `pipeline.Config(gliter.PLConfig{LogAll: true})`.
 
 ```
 Emit -> 4
