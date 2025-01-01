@@ -71,13 +71,17 @@ func (p *Pipeline[T]) handleStageFunc(
 	done <-chan interface{},
 	wg *sync.WaitGroup,
 	stepSignal chan<- any,
+	stepDone <-chan any,
 ) (outChan chan T, errChan chan error, node *PLNode[T]) {
 	wg.Add(1)
 	errChan = make(chan error)
 	outChan = make(chan T)
 	var val T
 	node = NewPLNodeAs(id, val)
-	incr := p.config.LogAll || p.config.LogCount || p.config.LogStep
+	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
+	if stepDone != nil {
+		done = or(done, stepDone)
+	}
 	go func() {
 		defer func() {
 			close(outChan)
@@ -87,11 +91,14 @@ func (p *Pipeline[T]) handleStageFunc(
 		for {
 			if val, ok := readOrDone(inChan, done); ok {
 				out, err := f(val)
-				if incr {
+				if keepCount {
 					node.IncAs(out)
 				}
-				if p.config.LogStep {
-					stepSignal <- struct{}{}
+				if stepSignal != nil {
+					var T any
+					if !writeOrDone(T, stepSignal, done) {
+						return
+					}
 				}
 				if err != nil {
 					if writeOrDone(err, errChan, done) {
@@ -112,15 +119,30 @@ func (p *Pipeline[T]) handleStageFunc(
 }
 
 func (p *Pipeline[T]) Run() error {
-	done := make(chan interface{})
-	dataChan := make(chan T)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	// Init generator
+
+	// Init logging helpers
 	var val T
 	root := NewPLNodeAs[T]("GEN", val)
-	stepSignal := NewStepper(root).Run()
-	defer close(stepSignal)
+	var stepSignal chan<- any
+	var stepDone <-chan any
+	if p.config.LogStep {
+		stepSignal, stepDone = NewStepper(root).Run()
+		defer close(stepSignal)
+	}
+	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
+
+	// Init async helpers
+	done := make(chan any)
+	var anyDone <-chan any
+	anyDone = done
+	if stepDone != nil {
+		anyDone = or(done, stepDone)
+	}
+	dataChan := make(chan T)
+	var wg sync.WaitGroup
+
+	// Init generator
+	wg.Add(1)
 	go func() {
 		defer func() {
 			close(dataChan)
@@ -128,21 +150,26 @@ func (p *Pipeline[T]) Run() error {
 		}()
 		val, con := p.generator()
 		for con {
-			root.IncAs(val)
-			if writeOrDone(val, dataChan, done) {
+			if keepCount {
+				root.IncAs(val)
+			}
+			if writeOrDone(val, dataChan, anyDone) {
 				val, con = p.generator()
 			} else {
 				return
 			}
 		}
 	}()
+
+	// Stage async helpers
 	errChans := List[chan error]()
 	prevOuts := List(dataChan)
 	prevNodes := List(root)
+
 	// Chain stages
 	for idx, stage := range p.stages {
 		if stage.stageType == THROTTLE {
-			prevOuts = SliceToList(ThrottleBy(prevOuts.Iter(), done, len(stage.handlers)))
+			prevOuts = SliceToList(ThrottleBy(prevOuts.Iter(), anyDone, len(stage.handlers)))
 			continue
 		}
 
@@ -151,9 +178,17 @@ func (p *Pipeline[T]) Run() error {
 
 		for j, po := range prevOuts.Iter() { // honor cumulative of prev forks
 			parentNode := prevNodes.At(j)
-			forkOut := TeeBy(po, done, len(stage.handlers))
+			forkOut := TeeBy(po, anyDone, len(stage.handlers))
 			for i, f := range stage.handlers { // for current stage
-				outChan, errChan, node := p.handleStageFunc(fmt.Sprintf("%d:%d:%d", idx, j, i), forkOut[i], f, done, &wg, stepSignal)
+				outChan, errChan, node := p.handleStageFunc(
+					fmt.Sprintf("%d:%d:%d", idx, j, i),
+					forkOut[i],
+					f,
+					anyDone,
+					&wg,
+					stepSignal,
+					stepDone,
+				)
 				errChans.Push(errChan)
 				outChans.Push(outChan)
 				outNodes.Push(node)
@@ -163,27 +198,29 @@ func (p *Pipeline[T]) Run() error {
 		prevOuts = outChans
 		prevNodes = outNodes
 	}
+
 	// Listen for errors
 	errBuff := make(chan error, 1)
 	for _, errChan := range errChans.Iter() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err, ok := readOrDone(errChan, done); ok {
-				if writeOrDone(err, errBuff, done) {
+			if err, ok := readOrDone(errChan, anyDone); ok {
+				if writeOrDone(err, errBuff, anyDone) {
 					// Will only reach once since err buffer has cap of 1
 					close(done)
 				}
 			}
 		}()
 	}
+
 	// Drain end of pipeline
 	for _, prevOut := range prevOuts.Iter() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for {
-				if val, ok := readOrDone(prevOut, done); ok {
+				if val, ok := readOrDone(prevOut, anyDone); ok {
 					p.handleLog(val)
 				} else {
 					return
@@ -191,6 +228,8 @@ func (p *Pipeline[T]) Run() error {
 			}
 		}()
 	}
+
+	// Capture results
 	wg.Wait()
 	var err error
 	select {

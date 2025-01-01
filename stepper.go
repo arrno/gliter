@@ -17,10 +17,12 @@ func NewStepper[T any](root *PLNode[T]) *Stepper[T] {
 	return s
 }
 
-func (s *Stepper[T]) Run() chan<- any {
+func (s *Stepper[T]) Run() (chan<- any, <-chan any) {
 	signal := make(chan any)
+	done := make(chan any)
 	s.signal = signal
 	go func() {
+		defer close(done)
 		for range s.signal {
 			s.root.PrintFullBF()
 			fmt.Print("Step [Y/n]: ")
@@ -32,5 +34,5 @@ func (s *Stepper[T]) Run() chan<- any {
 			return
 		}
 	}()
-	return signal
+	return signal, done
 }
