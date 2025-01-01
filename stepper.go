@@ -25,7 +25,7 @@ func (s *Stepper[T]) Run() (chan<- any, <-chan any) {
 		defer close(done)
 		for range s.signal {
 			s.root.PrintFullBF()
-			fmt.Print("Step [Y/n]: ")
+			fmt.Print("Step [Y/n]:")
 			var input string
 			fmt.Scanln(&input)
 			if slices.Contains([]string{"", "y"}, strings.ToLower(input)) {
