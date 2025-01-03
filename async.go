@@ -51,9 +51,9 @@ func ThrottleBy[T any](in []chan T, done <-chan interface{}, n int) (out []chan 
 				go func() {
 					defer wg.Done()
 					for {
-						if val, ok := readOrDone(inChan, done); !ok {
+						if val, ok := ReadOrDone(inChan, done); !ok {
 							return
-						} else if !writeOrDone(val, outChan, done) {
+						} else if !WriteOrDone(val, outChan, done) {
 							return
 						}
 					}
@@ -103,7 +103,7 @@ func TeeBy[T any](in <-chan T, done <-chan interface{}, n int) (outR []<-chan T)
 	return
 }
 
-func writeOrDone[T any](val T, write chan<- T, done <-chan any) bool {
+func WriteOrDone[T any](val T, write chan<- T, done <-chan any) bool {
 	select {
 	case write <- val:
 		return true
@@ -112,7 +112,7 @@ func writeOrDone[T any](val T, write chan<- T, done <-chan any) bool {
 	}
 }
 
-func readOrDone[T any](read <-chan T, done <-chan any) (T, bool) {
+func ReadOrDone[T any](read <-chan T, done <-chan any) (T, bool) {
 	select {
 	case val, ok := <-read:
 		return val, ok
@@ -122,7 +122,7 @@ func readOrDone[T any](read <-chan T, done <-chan any) (T, bool) {
 	}
 }
 
-func or(channels ...<-chan any) <-chan any {
+func Any(channels ...<-chan any) <-chan any {
 	switch len(channels) {
 	case 0:
 		return nil
@@ -143,7 +143,7 @@ func or(channels ...<-chan any) <-chan any {
 			case <-channels[0]:
 			case <-channels[1]:
 			case <-channels[2]:
-			case <-or(append(channels[3:], orDone)...):
+			case <-Any(append(channels[3:], orDone)...):
 			}
 		}
 	}()

@@ -80,7 +80,7 @@ func (p *Pipeline[T]) handleStageFunc(
 	node = NewPLNodeAs(id, val)
 	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
 	if stepDone != nil {
-		done = or(done, stepDone)
+		done = Any(done, stepDone)
 	}
 	go func() {
 		defer func() {
@@ -89,25 +89,25 @@ func (p *Pipeline[T]) handleStageFunc(
 			wg.Done()
 		}()
 		for {
-			if val, ok := readOrDone(inChan, done); ok {
+			if val, ok := ReadOrDone(inChan, done); ok {
 				out, err := f(val)
 				if keepCount {
 					node.IncAs(out)
 				}
 				if stepSignal != nil {
 					var T any
-					if !writeOrDone(T, stepSignal, done) {
+					if !WriteOrDone(T, stepSignal, done) {
 						return
 					}
 				}
 				if err != nil {
-					if writeOrDone(err, errChan, done) {
+					if WriteOrDone(err, errChan, done) {
 						continue
 					} else {
 						return
 					}
 				}
-				if !writeOrDone(out, outChan, done) {
+				if !WriteOrDone(out, outChan, done) {
 					return
 				}
 			} else {
@@ -136,7 +136,7 @@ func (p *Pipeline[T]) Run() error {
 	var anyDone <-chan any
 	anyDone = done
 	if stepDone != nil {
-		anyDone = or(done, stepDone)
+		anyDone = Any(done, stepDone)
 	}
 	dataChan := make(chan T)
 	var wg sync.WaitGroup
@@ -153,7 +153,7 @@ func (p *Pipeline[T]) Run() error {
 			if keepCount {
 				root.IncAs(val)
 			}
-			if writeOrDone(val, dataChan, anyDone) {
+			if WriteOrDone(val, dataChan, anyDone) {
 				val, con = p.generator()
 			} else {
 				return
@@ -205,8 +205,8 @@ func (p *Pipeline[T]) Run() error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err, ok := readOrDone(errChan, anyDone); ok {
-				if writeOrDone(err, errBuff, anyDone) {
+			if err, ok := ReadOrDone(errChan, anyDone); ok {
+				if WriteOrDone(err, errBuff, anyDone) {
 					// Will only reach once since err buffer has cap of 1
 					close(done)
 				}
@@ -220,7 +220,7 @@ func (p *Pipeline[T]) Run() error {
 		go func() {
 			defer wg.Done()
 			for {
-				if val, ok := readOrDone(prevOut, anyDone); ok {
+				if val, ok := ReadOrDone(prevOut, anyDone); ok {
 					p.handleLog(val)
 				} else {
 					return

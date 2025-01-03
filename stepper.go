@@ -2,6 +2,9 @@ package gliter
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -24,6 +27,7 @@ func (s *Stepper[T]) Run() (chan<- any, <-chan any) {
 	go func() {
 		defer close(done)
 		for range s.signal {
+			s.clearConsole()
 			s.root.PrintFullBF()
 			fmt.Print("Step [Y/n]:")
 			var input string
@@ -35,4 +39,15 @@ func (s *Stepper[T]) Run() (chan<- any, <-chan any) {
 		}
 	}()
 	return signal, done
+}
+
+func (s *Stepper[T]) clearConsole() {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "cls")
+	} else {
+		cmd = exec.Command("clear")
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Run()
 }

@@ -99,7 +99,12 @@ There is no distinct end stage. Any side-effects/outputs like db writes or API p
 
 It may be helpful during testing to audit what is happening inside a pipeline.
 
-To do so, optionally set pipeline logging via `pipeline.Config(gliter.PLConfig{LogAll: true})`.
+To do so, optionally set pipeline logging via one of the following modes in `pipeline.Config(gliter.PLConfig{...})`:
+
+- `LogAll` - Log emit and count
+- `LogEmit` - Only emit
+- `LogCount` - Only count
+- `LogStep` - Interactive CLI stepper
 
 ```
 Emit -> 4
@@ -156,7 +161,18 @@ Here is a visual diagram of the pipeline the code produces:
 
 ![Alt text](./diag/small-chart.png?raw=true "Title")
 
+### Misc
+
+Other async helpers in this library include:
+
+- Do your own throttling with `ThrottleBy`
+- Do your own channel forking with `TeeBy`
+- `ReadOrDone` + `WriteOrDone`
+- `Any` - take one from any, consolidating "done" channels
+
 ## Iter tools
+
+Synchronous iter tools that may be helpful.
 
 The `List` Type
 
