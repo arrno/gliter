@@ -1,2 +1,1 @@
-- GoDoc comments
 - Publish

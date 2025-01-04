@@ -4,6 +4,7 @@ import (
 	"fmt"
 )
 
+// PLNode is a representation of a pipeline node for logging/insight-tracking.
 type PLNode[T any] struct {
 	id       string
 	count    uint
@@ -34,6 +35,7 @@ func (n *PLNode[T]) StateArr() []string {
 	return []string{n.id, fmt.Sprintf("%d", n.count), fmt.Sprintf("%v", n.val)}
 }
 
+// PrintFullBF will print the full PLNode tree breadth-first to stdout.
 func (n *PLNode[T]) PrintFullBF() {
 	q := List[*PLNode[T]]()
 	results := [][]string{

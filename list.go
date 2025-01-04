@@ -49,6 +49,7 @@ func (l *Iter[T]) Pop() T {
 	return val
 }
 
+// FPop inserts at the front of the list.
 func (l *Iter[T]) FPop() T {
 	var val T
 	if len(l.items) > 0 {
@@ -59,6 +60,8 @@ func (l *Iter[T]) FPop() T {
 
 }
 
+// Map transforms the values of Iter without changing the type. To change
+// the type, see non-receiver alternative 'Map' function.
 func (l Iter[T]) Map(f func(val T) T) Iter[T] {
 	for i, item := range l.items {
 		l.items[i] = f(item)
@@ -126,6 +129,7 @@ func (l Iter[T]) Slice(start, stop int) Iter[T] {
 	return l
 }
 
+// Map converts and transforms Iter[T] to Iter[R].
 func Map[T, R any](list Iter[T], f func(T) R) *Iter[R] {
 	result := make([]R, len(list.items))
 	for i, item := range list.items {

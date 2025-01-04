@@ -2,6 +2,7 @@ package gliter
 
 import "sync"
 
+// InParallel runs all the functions asynchronously and returns the results in order or the first error.
 func InParallel[T any](funcs []func() (T, error)) ([]T, error) {
 	type orderedResult struct {
 		result T
@@ -31,6 +32,8 @@ func InParallel[T any](funcs []func() (T, error)) ([]T, error) {
 	return results, nil
 }
 
+// ThrottleBy merges the output of the provided channels into n output channels.
+// This function returns when 'in' channels are closed or signal is received on 'done'.
 func ThrottleBy[T any](in []chan T, done <-chan interface{}, n int) (out []chan T) {
 	out = make([]chan T, n)
 	for i := range n {
@@ -66,6 +69,8 @@ func ThrottleBy[T any](in []chan T, done <-chan interface{}, n int) (out []chan 
 	return
 }
 
+// TeeBy broadcasts all received signals on provided channel into n output channels.
+// This function returns when 'in' channel is closed or signal is received on 'done'.
 func TeeBy[T any](in <-chan T, done <-chan interface{}, n int) (outR []<-chan T) {
 	if n < 2 {
 		return []<-chan T{in}
@@ -103,6 +108,7 @@ func TeeBy[T any](in <-chan T, done <-chan interface{}, n int) (outR []<-chan T)
 	return
 }
 
+// WriteOrDone blocks until it sends to 'write' or receives from 'done' and returns the boolean result.
 func WriteOrDone[T any](val T, write chan<- T, done <-chan any) bool {
 	select {
 	case write <- val:
@@ -112,6 +118,7 @@ func WriteOrDone[T any](val T, write chan<- T, done <-chan any) bool {
 	}
 }
 
+// ReadOrDone blocks until it receives from 'read' or receives from 'done' and returns the boolean result.
 func ReadOrDone[T any](read <-chan T, done <-chan any) (T, bool) {
 	select {
 	case val, ok := <-read:
@@ -122,6 +129,7 @@ func ReadOrDone[T any](read <-chan T, done <-chan any) (T, bool) {
 	}
 }
 
+// Any consolidates a set of 'done' channels into one done channel.
 func Any(channels ...<-chan any) <-chan any {
 	switch len(channels) {
 	case 0:

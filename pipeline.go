@@ -12,6 +12,7 @@ const (
 	THROTTLE
 )
 
+// PLConfig controls limited pipeline behavior.
 type PLConfig struct {
 	LogAll   bool
 	LogEmit  bool
@@ -24,6 +25,7 @@ type stage[T any] struct {
 	handlers  []func(data T) (T, error)
 }
 
+// Pipeline spawns threads for all stage functions and orchestrates channel signals between them.
 type Pipeline[T any] struct {
 	generator func() (T, bool)
 	stages    []stage[T]
@@ -36,6 +38,8 @@ func NewPipeline[T any](gen func() (T, bool)) *Pipeline[T] {
 	}
 }
 
+// Stage pushes a new stage onto the pipeline. A stage should have > 0 transform functions. Each
+// transform function beyond the first forks the pipeline into an additional downstream branch.
 func (p *Pipeline[T]) Stage(fs []func(data T) (T, error)) *Pipeline[T] {
 	st := stage[T]{
 		stageType: FORK,
@@ -45,11 +49,13 @@ func (p *Pipeline[T]) Stage(fs []func(data T) (T, error)) *Pipeline[T] {
 	return p
 }
 
-func (p *Pipeline[T]) Throttle(by uint) *Pipeline[T] {
-	if by < 1 {
-		by = 1
+// Throttle pushes a special throttle stage onto the pipeline. A throttle stage will merge all upstream
+// branches into n downstream branches.
+func (p *Pipeline[T]) Throttle(n uint) *Pipeline[T] {
+	if n < 1 {
+		n = 1
 	}
-	p.stages = append(p.stages, stage[T]{stageType: THROTTLE, handlers: make([]func(data T) (T, error), by)})
+	p.stages = append(p.stages, stage[T]{stageType: THROTTLE, handlers: make([]func(data T) (T, error), n)})
 	return p
 }
 
@@ -118,6 +124,7 @@ func (p *Pipeline[T]) handleStageFunc(
 	return
 }
 
+// Run builds and launches all the pipeline stages.
 func (p *Pipeline[T]) Run() error {
 
 	// Init logging helpers
