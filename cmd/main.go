@@ -1,9 +1,17 @@
 package main
 
-import "github.com/arrno/gliter"
+import (
+	"fmt"
+	"math"
+	"math/rand/v2"
+
+	"github.com/arrno/gliter"
+)
 
 func main() {
-	MainPipeline()
+	// MainPipeline()
+	// fmt.Println(rand.Float64() * 100)
+	fmt.Println(math.Round(rand.Float64()*10000) / 100)
 }
 
 func MainPipeline() {
