@@ -39,15 +39,15 @@ func MainPipeline() {
 		Run()
 }
 
-func exampleGen() func() (int, bool) {
+func exampleGen() func() (int, bool, error) {
 	data := []int{1, 2, 3, 4, 5}
 	index := -1
-	return func() (int, bool) {
+	return func() (int, bool, error) {
 		index++
 		if index == len(data) {
-			return 0, false
+			return 0, false, nil
 		}
-		return data[index], true
+		return data[index], true, nil
 	}
 }
 

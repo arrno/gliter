@@ -12,7 +12,7 @@ import (
 
 func TestPipeline(t *testing.T) {
 	col, exampleEnd := makeEnd()
-	err := NewPipeline(exampleGen()).
+	_, err := NewPipeline(exampleGen()).
 		Stage(
 			[]func(i int) (int, error){
 				exampleMid, // branch A
@@ -36,7 +36,7 @@ func TestPipeline(t *testing.T) {
 
 func TestPipelineErr(t *testing.T) {
 	_, exampleEnd := makeEnd()
-	err := NewPipeline(exampleGen()).
+	_, err := NewPipeline(exampleGen()).
 		Stage(
 			[]func(i int) (int, error){
 				exampleMid,    // branch A
@@ -53,7 +53,7 @@ func TestPipelineErr(t *testing.T) {
 
 	// With throttle
 	_, exampleEnd = makeEnd()
-	err = NewPipeline(exampleGen()).
+	_, err = NewPipeline(exampleGen()).
 		Stage(
 			[]func(i int) (int, error){
 				exampleMid,    // branch A
@@ -70,9 +70,32 @@ func TestPipelineErr(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
+func TestPipelineGenErr(t *testing.T) {
+	for _, gen := range []func() (int, bool, error){
+		exampleGenErrOne(),
+		exampleGenErrTwo(),
+		exampleGenErrThree(),
+	} {
+		_, exampleEnd := makeEnd()
+		_, err := NewPipeline(gen).
+			Stage(
+				[]func(i int) (int, error){
+					exampleMid,
+				},
+			).
+			Stage(
+				[]func(i int) (int, error){
+					exampleEnd,
+				},
+			).
+			Run()
+		assert.NotNil(t, err)
+	}
+}
+
 func TestPipelineFork(t *testing.T) {
 	col, exampleEnd := makeEnd()
-	err := NewPipeline(exampleGen()).
+	_, err := NewPipeline(exampleGen()).
 		Stage(
 			[]func(i int) (int, error){
 				exampleMid, // branch A
@@ -111,7 +134,7 @@ func TestPipelineFork(t *testing.T) {
 
 func TestPipelineThrottle(t *testing.T) {
 	col, exampleEnd := makeEnd()
-	err := NewPipeline(exampleGen()).
+	_, err := NewPipeline(exampleGen()).
 		Stage(
 			[]func(i int) (int, error){
 				exampleMid, // branch A
@@ -160,15 +183,42 @@ func NewCollect[T any]() *Collect[T] {
 	}
 }
 
-func exampleGen() func() (int, bool) {
+func exampleGen() func() (int, bool, error) {
 	data := []int{1, 2, 3, 4, 5}
 	index := -1
-	return func() (int, bool) {
+	return func() (int, bool, error) {
 		index++
 		if index == len(data) {
-			return 0, false
+			return 0, false, nil
 		}
-		return data[index], true
+		return data[index], true, nil
+	}
+}
+
+func exampleGenErrOne() func() (int, bool, error) {
+	return func() (int, bool, error) {
+		return 0, true, errors.New("err")
+	}
+}
+
+func exampleGenErrTwo() func() (int, bool, error) {
+	return func() (int, bool, error) {
+		return 0, false, errors.New("err")
+	}
+}
+
+func exampleGenErrThree() func() (int, bool, error) {
+	data := []int{1, 2, 3, 4, 5}
+	index := -1
+	return func() (int, bool, error) {
+		index++
+		if index > 1 {
+			return 0, false, errors.New("err")
+		}
+		if index == len(data) {
+			return 0, false, nil
+		}
+		return data[index], true, nil
 	}
 }
 

@@ -14,10 +14,11 @@ const (
 
 // PLConfig controls limited pipeline behavior.
 type PLConfig struct {
-	LogAll   bool
-	LogEmit  bool
-	LogCount bool
-	LogStep  bool
+	LogAll      bool
+	LogEmit     bool
+	LogCount    bool
+	ReturnCount bool
+	LogStep     bool
 }
 
 type stage[T any] struct {
@@ -27,12 +28,12 @@ type stage[T any] struct {
 
 // Pipeline spawns threads for all stage functions and orchestrates channel signals between them.
 type Pipeline[T any] struct {
-	generator func() (T, bool)
+	generator func() (T, bool, error)
 	stages    []stage[T]
 	config    PLConfig
 }
 
-func NewPipeline[T any](gen func() (T, bool)) *Pipeline[T] {
+func NewPipeline[T any](gen func() (T, bool, error)) *Pipeline[T] {
 	return &Pipeline[T]{
 		generator: gen,
 	}
@@ -125,7 +126,7 @@ func (p *Pipeline[T]) handleStageFunc(
 }
 
 // Run builds and launches all the pipeline stages.
-func (p *Pipeline[T]) Run() error {
+func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 
 	// Init logging helpers
 	var val T
@@ -136,7 +137,7 @@ func (p *Pipeline[T]) Run() error {
 		stepSignal, stepDone = NewStepper(root).Run()
 		defer close(stepSignal)
 	}
-	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
+	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep || p.config.ReturnCount
 
 	// Init async helpers
 	done := make(chan any)
@@ -148,20 +149,28 @@ func (p *Pipeline[T]) Run() error {
 	dataChan := make(chan T)
 	var wg sync.WaitGroup
 
+	errChan := make(chan error)
 	// Init generator
 	wg.Add(1)
 	go func() {
 		defer func() {
+			close(errChan)
 			close(dataChan)
 			wg.Done()
 		}()
-		val, con := p.generator()
+		val, con, err := p.generator()
+		if err != nil {
+			WriteOrDone(err, errChan, done)
+		}
 		for con {
 			if keepCount {
 				root.IncAs(val)
 			}
 			if WriteOrDone(val, dataChan, anyDone) {
-				val, con = p.generator()
+				val, con, err = p.generator()
+				if err != nil {
+					WriteOrDone(err, errChan, done)
+				}
 			} else {
 				return
 			}
@@ -169,7 +178,7 @@ func (p *Pipeline[T]) Run() error {
 	}()
 
 	// Stage async helpers
-	errChans := List[chan error]()
+	errChans := List(errChan)
 	prevOuts := List(dataChan)
 	prevNodes := List(root)
 
@@ -246,5 +255,8 @@ func (p *Pipeline[T]) Run() error {
 	if p.config.LogAll || p.config.LogCount {
 		root.PrintFullBF()
 	}
-	return err
+	if p.config.ReturnCount {
+		return root.CollectCount(), err
+	}
+	return nil, err
 }

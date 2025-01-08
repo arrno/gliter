@@ -35,6 +35,13 @@ func (n *PLNode[T]) StateArr() []string {
 	return []string{n.id, fmt.Sprintf("%d", n.count), fmt.Sprintf("%v", n.val)}
 }
 
+func (n *PLNode[T]) Count() PLNodeCount {
+	return PLNodeCount{
+		NodeID: n.id,
+		Count:  n.count,
+	}
+}
+
 // PrintFullBF will print the full PLNode tree breadth-first to stdout.
 func (n *PLNode[T]) PrintFullBF() {
 	q := List[*PLNode[T]]()
@@ -83,6 +90,26 @@ func (n *PLNode[T]) PrintFullBF() {
 	printSep()
 }
 
+func (n *PLNode[T]) CollectCount() []PLNodeCount {
+	q := List[*PLNode[T]]()
+	results := []PLNodeCount{}
+	var collect func()
+	collect = func() {
+		if q.Len() == 0 {
+			return
+		}
+		next := q.FPop()
+		results = append(results, next.Count())
+		for _, child := range next.children {
+			q.Push(child)
+		}
+		collect()
+	}
+	q.Push(n)
+	collect()
+	return results
+}
+
 func (n *PLNode[T]) Set(val T) {
 	n.val = val
 }
@@ -104,4 +131,9 @@ func (n *PLNode[T]) Spawn() *PLNode[T] {
 
 func (n *PLNode[T]) SpawnAs(child *PLNode[T]) {
 	n.children = append(n.children, child)
+}
+
+type PLNodeCount struct {
+	NodeID string
+	Count  uint
 }

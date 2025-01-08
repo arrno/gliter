@@ -72,7 +72,7 @@ func (db *MockDB) BatchAdd(records []any) error {
 	return nil
 }
 
-// Transform types
+// Transform type
 type RecordCents struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
@@ -80,105 +80,90 @@ type RecordCents struct {
 	AmountCents       int
 }
 
-// Union type
-type Union struct {
-	PageDollars []Record
-	PageCents   []RecordCents
-}
-
-func ToUnion(p []Record) Union {
-	return Union{
-		PageDollars: p,
-	}
-}
-
 // Transform 1
-func ConvertToCents(du Union) (Union, error) {
-	p := du.PageDollars
-	if p == nil {
-		return du, errors.New("expected page in dollars")
+func ConvertToCents(data any) (any, error) {
+	records, ok := data.([]Record)
+	if !ok {
+		return data, errors.New("expected page in dollars")
 	}
-	cu := Union{
-		PageCents: make([]RecordCents, len(p)),
-	}
-	for i := range cu.PageCents {
-		cu.PageCents[i] = RecordCents{
-			CreatedAt:         p[i].CreatedAt,
+	results := make([]RecordCents, len(records))
+	for i, r := range records {
+		results[i] = RecordCents{
+			CreatedAt:         r.CreatedAt,
 			UpdatedAt:         time.Now(),
-			TransactionNumber: p[i].TransactionNumber,
-			AmountCents:       int(p[i].AmountDollars * 100),
+			TransactionNumber: r.TransactionNumber,
+			AmountCents:       int(r.AmountDollars * 100),
 		}
 	}
-	return cu, nil
+	return results, nil
 }
 
 // Transform 2
-func ApplyEvenFee(du Union) (Union, error) {
-	p := du.PageDollars
-	if p == nil {
-		return du, errors.New("expected page in dollars")
+func ApplyEvenFee(data any) (any, error) {
+	records, ok := data.([]Record)
+	if !ok {
+		return data, errors.New("expected page in dollars")
 	}
-	nu := Union{
-		PageDollars: make([]Record, len(p)),
-	}
-	for i := range nu.PageDollars {
+	results := make([]Record, len(records))
+	for i, r := range records {
 		// Clone ptr to mutate
-		nu.PageDollars[i] = Record{
-			CreatedAt:         p[i].CreatedAt,
-			TransactionNumber: p[i].TransactionNumber,
-			AmountDollars:     p[i].AmountDollars - 10.0,
+		results[i] = Record{
+			CreatedAt:         r.CreatedAt,
+			TransactionNumber: r.TransactionNumber,
+			AmountDollars:     r.AmountDollars - 10.0,
 		}
-		if p[i].TransactionNumber%2 != 0 {
-			nu.PageDollars[i].AmountDollars -= 10
+		if r.TransactionNumber%2 != 0 {
+			results[i].AmountDollars -= 10
 		}
 	}
-	return nu, nil
+	return results, nil
 }
 
 func Stream() {
 
-	gen := func() func() (Union, bool) {
+	gen := func() func() (any, bool, error) {
 		api := NewMockAPI()
 		var page int
-		return func() (Union, bool) {
+		return func() (any, bool, error) {
 			page++
 			results, err := api.FetchPage(page)
 			if err != nil {
-				panic(err)
+				return struct{}{}, false, err
 			}
 			if len(results) == 0 {
-				return ToUnion(results), false
+				return results, false, nil
 			} else {
-				return ToUnion(results), true
+				return results, true, nil
 			}
 		}
 	}
 
 	db := NewMockDB()
 
-	store := func(inbound Union) (Union, error) {
-		var records []any
-		if inbound.PageCents != nil {
-			records = make([]any, len(inbound.PageCents))
-			for i, r := range inbound.PageCents {
-				records[i] = r
+	store := func(inbound any) (any, error) {
+		var results []any
+		if records, ok := inbound.([]Record); ok {
+			results = make([]any, len(records))
+			for i, r := range records {
+				results[i] = r
 			}
-		} else if inbound.PageDollars != nil {
-			records = make([]any, len(inbound.PageDollars))
-			for i, r := range inbound.PageDollars {
-				records[i] = r
+		} else if records, ok := inbound.([]RecordCents); ok {
+			results = make([]any, len(records))
+			for i, r := range records {
+				results[i] = r
 			}
 		}
-		if err := db.BatchAdd(records); err != nil {
-			return Union{}, err
+		if err := db.BatchAdd(results); err != nil {
+			return struct{}{}, err
 		}
-		return Union{}, nil
+		return struct{}{}, nil
 	}
 
 	// Stage functions alias
-	type sf []func(Union) (Union, error)
+	type sf []func(any) (any, error)
 
-	gliter.NewPipeline(gen()).
+	_, err := gliter.NewPipeline(gen()).
+		Config(gliter.PLConfig{LogCount: true}).
 		Stage(sf{
 			ConvertToCents,
 			ApplyEvenFee,
@@ -187,4 +172,8 @@ func Stream() {
 			store,
 		}).
 		Run()
+
+	if err != nil {
+		panic(err)
+	}
 }
