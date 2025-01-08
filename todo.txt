@@ -1,2 +1,2 @@
-- Example
+- Partial page count
 - Publish

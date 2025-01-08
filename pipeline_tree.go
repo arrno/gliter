@@ -57,7 +57,7 @@ func (n *PLNode[T]) PrintFullBF() {
 		next := q.FPop()
 		state := next.StateArr()
 		for i := range len(dimensions) {
-			dimensions[i] = max(dimensions[i], len(state[i]))
+			dimensions[i] = min(max(dimensions[i], len(state[i])), MAX_PAD)
 		}
 		results = append(results, state)
 		for _, child := range next.children {

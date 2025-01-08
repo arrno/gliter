@@ -161,6 +161,10 @@ Here is a visual diagram of the pipeline the code produces:
 
 ![Alt text](./diag/small-chart.png?raw=true "Title")
 
+#### Example
+
+For a more realistic pipeline example, see `./cmd/example.go`
+
 ### Misc
 
 Other async helpers in this library include:

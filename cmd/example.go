@@ -51,6 +51,8 @@ func NewMockAPI() *MockAPI[Record] {
 func (a *MockAPI[Record]) FetchPage(page int) (results []Record, err error) {
 	if page < 1 {
 		return nil, fmt.Errorf("page number must be positive. Received %d", page)
+	} else if page > len(a.Pages) {
+		return nil, nil
 	}
 	return a.Pages[page-1], nil
 }
@@ -119,7 +121,8 @@ func ApplyEvenFee(data any) (any, error) {
 	return results, nil
 }
 
-func Stream() {
+// Example main function to stream the data in a pipeline
+func ExampleMain() {
 
 	gen := func() func() (any, bool, error) {
 		api := NewMockAPI()
