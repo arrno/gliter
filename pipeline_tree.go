@@ -38,7 +38,7 @@ func (n *PLNode[T]) StateArr() []string {
 func (n *PLNode[T]) Count() PLNodeCount {
 	return PLNodeCount{
 		NodeID: n.id,
-		Count:  n.count,
+		Count:  int(n.count),
 	}
 }
 
@@ -135,5 +135,5 @@ func (n *PLNode[T]) SpawnAs(child *PLNode[T]) {
 
 type PLNodeCount struct {
 	NodeID string
-	Count  uint
+	Count  int
 }

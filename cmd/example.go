@@ -143,7 +143,7 @@ func ExampleMain() {
 
 	db := NewMockDB()
 
-	store := func(inbound any) (any, error) {
+	store := func(inbound any, tally chan<- int) (any, error) {
 		var results []any
 		if records, ok := inbound.([]Record); ok {
 			results = make([]any, len(records))
@@ -156,6 +156,7 @@ func ExampleMain() {
 				results[i] = r
 			}
 		}
+		tally <- len(results)
 		if err := db.BatchAdd(results); err != nil {
 			return struct{}{}, err
 		}
@@ -165,18 +166,28 @@ func ExampleMain() {
 	// Stage functions alias
 	type sf []func(any) (any, error)
 
-	_, err := gliter.NewPipeline(gen()).
+	pipeline := gliter.NewPipeline(gen())
+	tally := pipeline.Tally()
+
+	storeWithTally := func(inbound any) (any, error) {
+		return store(inbound, tally)
+	}
+
+	count, err := pipeline.
 		Config(gliter.PLConfig{LogCount: true}).
 		Stage(sf{
 			ConvertToCents,
 			ApplyEvenFee,
 		}).
 		Stage(sf{
-			store,
+			storeWithTally,
 		}).
 		Run()
 
 	if err != nil {
 		panic(err)
 	}
+
+	// We expect 200 records to have been processed by the final stage of the pipeline
+	fmt.Printf("Node: %s\nCount: %d\n", count[0].NodeID, count[0].Count)
 }

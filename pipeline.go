@@ -30,6 +30,7 @@ type stage[T any] struct {
 type Pipeline[T any] struct {
 	generator func() (T, bool, error)
 	stages    []stage[T]
+	tally     <-chan int
 	config    PLConfig
 }
 
@@ -37,6 +38,12 @@ func NewPipeline[T any](gen func() (T, bool, error)) *Pipeline[T] {
 	return &Pipeline[T]{
 		generator: gen,
 	}
+}
+
+func (p *Pipeline[T]) Tally() chan<- int {
+	tally := make(chan int)
+	p.tally = tally
+	return tally
 }
 
 // Stage pushes a new stage onto the pipeline. A stage should have > 0 transform functions. Each
@@ -245,8 +252,33 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 		}()
 	}
 
+	var tallyChan chan int
+	var tallyDone chan any
+	// if tally was created
+	if p.tally != nil {
+		tallyChan = make(chan int, 1)
+		tallyDone = make(chan any)
+		go func() {
+			anyAnyDone := Any(anyDone, tallyDone)
+			tallyCount := 0
+			defer func() { tallyChan <- tallyCount }()
+			for {
+				if val, ok := ReadOrDone(p.tally, anyAnyDone); ok {
+					tallyCount += val
+				} else {
+					return
+				}
+			}
+		}()
+	}
+
+	tallyResult := 0
 	// Capture results
 	wg.Wait()
+	if p.tally != nil {
+		close(tallyDone)
+		tallyResult = <-tallyChan
+	}
 	var err error
 	select {
 	case err = <-errBuff:
@@ -254,6 +286,9 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 	}
 	if p.config.LogAll || p.config.LogCount {
 		root.PrintFullBF()
+	}
+	if p.tally != nil {
+		return []PLNodeCount{{NodeID: "tally", Count: tallyResult}}, err
 	}
 	if p.config.ReturnCount {
 		return root.CollectCount(), err

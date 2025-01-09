@@ -243,3 +243,43 @@ func exampleMidErr(i int) (int, error) {
 	}
 	return i * 2, nil
 }
+
+func TestPipelineTally(t *testing.T) {
+	_, exampleEnd := makeEnd()
+
+	pipeline := NewPipeline(exampleGen())
+	tally := pipeline.Tally()
+
+	endWithTally := func(i int) (int, error) {
+		tally <- 1
+		return exampleEnd(i)
+	}
+
+	count, err := pipeline.
+		Stage(
+			[]func(i int) (int, error){
+				exampleMid, // branch A
+				exampleMid, // branch B
+			},
+		).
+		Stage(
+			[]func(i int) (int, error){
+				exampleMid, // branches A.C, B.C
+				exampleMid, // branches A.D, B.D
+				exampleMid, // branches A.E, B.E
+			},
+		).
+		Stage(
+			[]func(i int) (int, error){
+				endWithTally,
+			},
+		).
+		Run()
+
+	// 1, 2, 3, 4, 5
+	// 16, 64, 144, 246, 400
+	assert.Nil(t, err)
+	assert.Equal(t, len(count), 1)
+	assert.Equal(t, count[0].NodeID, "tally")
+	assert.Equal(t, count[0].Count, 30)
+}

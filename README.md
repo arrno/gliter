@@ -9,36 +9,6 @@
 
 ## Async iter tools
 
-### In parallel
-
-AKA Fan-in/Fan-out
-
-Run a series of functions in parallel and collect results **preserving order at no cost.**.
-
-```go
-tasks := []func() (string, error){
-    func() (string, error) {
-        return "Hello", nil
-    },
-    func() (string, error) {
-        return ", ", nil
-    },
-    func() (string, error) {
-        return "Async!", nil
-    },
-}
-// Run all tasks at the same time and collect results/err
-results, err := gliter.InParallel(tasks)
-if err != nil {
-    panic(err)
-}
-
-// Always prints "Hello, Async!"
-for _, result := range results {
-    fmt.Print(result)
-}
-```
-
 ### Pipelines
 
 Orchestrate a series of functions into a branching async pipeline with the `Pipeline` type.
@@ -161,9 +131,87 @@ Here is a visual diagram of the pipeline the code produces:
 
 ![Alt text](./diag/small-chart.png?raw=true "Title")
 
+#### Tally
+
+There are two ways to tally items processed by the pipeline.
+
+- Toggle on config to get all the node counts returned:
+
+```go
+counts, err := gliter.
+    NewPipeline(exampleGen()).
+    Config(gliter.PLConfig{ReturnCount: true}).
+    Run()
+
+if err != nil {
+    panic(err)
+}
+
+for _, count := range counts {
+    fmt.Printf("Node: %s\nCount: %d\n\n", count.NodeID, count.Count)
+}
+```
+
+- For more granular control, use the `Tally` channel like this:
+
+```go
+pipeline := NewPipeline(exampleGen())
+tally := pipeline.Tally()
+
+endWithTally := func(i int) (int, error) {
+    tally <- 1
+    return exampleEnd(i)
+}
+
+// Produces one `PLNodeCount` for node "tally"
+count, err := pipeline.
+    Stage(
+        []func(i int) (int, error){
+            endWithTally,
+        },
+    ).
+    Run()
+
+if err != nil {
+    panic(err)
+}
+
+fmt.Printf("Node: %s\nCount: %d\n", count[0].NodeID, count[0].Count)
+```
+
 #### Example
 
 For a more realistic pipeline example, see `./cmd/example.go`
+
+### In parallel
+
+AKA Fan-in/Fan-out
+
+Run a series of functions in parallel and collect results **preserving order at no cost.**.
+
+```go
+tasks := []func() (string, error){
+    func() (string, error) {
+        return "Hello", nil
+    },
+    func() (string, error) {
+        return ", ", nil
+    },
+    func() (string, error) {
+        return "Async!", nil
+    },
+}
+// Run all tasks at the same time and collect results/err
+results, err := gliter.InParallel(tasks)
+if err != nil {
+    panic(err)
+}
+
+// Always prints "Hello, Async!"
+for _, result := range results {
+    fmt.Print(result)
+}
+```
 
 ### Misc
 
