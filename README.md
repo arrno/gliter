@@ -2,7 +2,7 @@
 
 **Go Lang iter tools!** This package has two utilities:
 
-- **Async iter tools:** Simple utilities for wrapping regular functions in light async wrappers to do async-pipeline and fan-out/fan-in patterns.
+- **Async iter tools:** Powerful API for composing regular functions into complex async-pipeline and fan-out/fan-in patterns.
 - **Iter tools:** Light generic slice wrapper for alternative functional/chaining syntax similar to Rust/Typescript.
 
 ʕ◔ϖ◔ʔ
