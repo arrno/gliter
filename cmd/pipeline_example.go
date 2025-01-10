@@ -10,23 +10,40 @@ import (
 	"github.com/arrno/gliter"
 )
 
-// Interfaces for input/output.
+/*
+In this example, we fetch paginated transaction records from an API, transform them
+by two distinct transform functions, and store the results in a database.
+
+By using a GLiter Pipeline, we can reduce ingest latency by storing records to the DB
+while we're fetching pages from the API (and transforming). By running all stages
+concurrently, the throughput is increased.
+
+Since we have two transformers stacked in the middle stage, our pipeline is also forked
+such that both downstream transform branches are writing to the DB concurrently.
+
+All of this with almost zero async primitives.
+*/
+
+// These are our interfaces for input/output.
+
+// API will be wrapped by our pipeline generator.
 type API[T any] interface {
 	FetchPage(page uint) (results []T, err error)
 }
 
+// DB is where our last pipeline stage will store the output.
 type DB interface {
 	BatchAdd(records []any) error
 }
 
-// Original data type
+// Record is the pipeline input data type.
 type Record struct {
 	CreatedAt         time.Time
 	TransactionNumber int
 	AmountDollars     float64
 }
 
-// API
+// MockAPI satisfied the API interface.
 type MockAPI[T any] struct {
 	Pages [][]T
 }
@@ -48,6 +65,7 @@ func NewMockAPI() *MockAPI[Record] {
 	return a
 }
 
+// FetchPage returns a page of data that may be empty. If `page` is negative, an error is returned.
 func (a *MockAPI[Record]) FetchPage(page int) (results []Record, err error) {
 	if page < 1 {
 		return nil, fmt.Errorf("page number must be positive. Received %d", page)
@@ -57,7 +75,7 @@ func (a *MockAPI[Record]) FetchPage(page int) (results []Record, err error) {
 	return a.Pages[page-1], nil
 }
 
-// DB
+// MockDB satisfied the DB interface.
 type MockDB struct {
 	Records []any
 }
@@ -66,6 +84,7 @@ func NewMockDB() *MockDB {
 	return new(MockDB)
 }
 
+// BatchAdd stores the records. If `records` is empty, an error is returned.
 func (db *MockDB) BatchAdd(records []any) error {
 	if len(records) == 0 {
 		return errors.New("records should not be empty")
@@ -74,7 +93,7 @@ func (db *MockDB) BatchAdd(records []any) error {
 	return nil
 }
 
-// Transform type
+// RecordCents is a transform variant of the original `Record` type.
 type RecordCents struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
@@ -82,7 +101,7 @@ type RecordCents struct {
 	AmountCents       int
 }
 
-// Transform 1
+// ConvertToCents is our first transform function which converts a `Record` into a `RecordCents`.
 func ConvertToCents(data any) (any, error) {
 	records, ok := data.([]Record)
 	if !ok {
@@ -100,7 +119,7 @@ func ConvertToCents(data any) (any, error) {
 	return results, nil
 }
 
-// Transform 2
+// ApplyEvenFee is our second transform function which applies a $10 fee to even-numbered Record transactions.
 func ApplyEvenFee(data any) (any, error) {
 	records, ok := data.([]Record)
 	if !ok {
@@ -121,9 +140,10 @@ func ApplyEvenFee(data any) (any, error) {
 	return results, nil
 }
 
-// Example main function to stream the data in a pipeline
+// ExampleMain is the `Main` function for our example. Here we will build and run our pipeline.
 func ExampleMain() {
 
+	// First we create a generator that wraps our API service.
 	gen := func() func() (any, bool, error) {
 		api := NewMockAPI()
 		var page int
@@ -141,8 +161,11 @@ func ExampleMain() {
 		}
 	}
 
+	// Next we create a DB service and a `store` method.
+	// The `store` method wraps the db `BatchAdd` function and will serve
+	// as the final stage of our pipeline. Note that `store` also takes a
+	// tally channel for granular processed-record counting.
 	db := NewMockDB()
-
 	store := func(inbound any, tally chan<- int) (any, error) {
 		var results []any
 		if records, ok := inbound.([]Record); ok {
@@ -156,23 +179,27 @@ func ExampleMain() {
 				results[i] = r
 			}
 		}
-		tally <- len(results)
+		tally <- len(results) // count total records processed
 		if err := db.BatchAdd(results); err != nil {
 			return struct{}{}, err
 		}
 		return struct{}{}, nil
 	}
 
-	// Stage functions alias
+	// `sf` is a type alias to make the code easier to read.
 	type sf []func(any) (any, error)
 
+	// We create a new pipeline out of our generator.
 	pipeline := gliter.NewPipeline(gen())
-	tally := pipeline.Tally()
 
+	// Let's initialize a tally channel for better control over the processed count.
+	tally := pipeline.Tally()
+	// `storeWithTally` is a simple closure that captures `tally` and calls `store`.
 	storeWithTally := func(inbound any) (any, error) {
 		return store(inbound, tally)
 	}
 
+	// Lastly, we assemble our pipeline stages, enable logging, and run the pipeline.
 	count, err := pipeline.
 		Config(gliter.PLConfig{LogCount: true}).
 		Stage(sf{
@@ -188,6 +215,8 @@ func ExampleMain() {
 		panic(err)
 	}
 
-	// We expect 200 records to have been processed by the final stage of the pipeline
+	// We expect 200 records to have been processed by the sum of all `store` function instances.
 	fmt.Printf("Node: %s\nCount: %d\n", count[0].NodeID, count[0].Count)
+
+	// That's it!
 }
