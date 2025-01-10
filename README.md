@@ -2,12 +2,12 @@
 
 **Go Lang iter tools!** This package has two utilities:
 
-- **Async iter tools:** Simple utilities for wrapping regular functions in light async wrappers to do async-pipeline any fan-out/fan-in patterns.
+- **Async iter tools:** Simple utilities for wrapping regular functions in light async wrappers to do async-pipeline and fan-out/fan-in patterns.
 - **Iter tools:** Light generic slice wrapper for alternative functional/chaining syntax similar to Rust/Typescript.
 
 ʕ◔ϖ◔ʔ
 
-The mission of this project is to make it easy to compose normal business logic into complex async patterns. We should spend most our mental energy solving our core problems instead of worrying about race conditions, deadlocks, channel states, and go-routine leaks. The patterns published here are all intended to serve that goal.
+The mission of this project is to make it easy to compose normal business logic into complex async patterns. Ideally, we should spend most our mental energy solving our core problems instead of worrying about race conditions, deadlocks, channel states, and go-routine leaks. The patterns published here are all intended to serve that goal.
 
 ## Async iter tools
 
@@ -191,7 +191,7 @@ This is helpful if slices/maps are passed through the pipeline and you want to t
 
 #### Example
 
-For a more realistic pipeline example, see `./cmd/example.go`
+For a more realistic pipeline example, see `./cmd/pipeline_example.go`
 
 ### In parallel
 
