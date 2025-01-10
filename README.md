@@ -2,10 +2,12 @@
 
 **Go Lang iter tools!** This package has two utilities:
 
-- **Async iter tools:** Simple utilities for wrapping regular functions in light async wrappers to do fan-out/fan-in and async-pipeline patterns.
+- **Async iter tools:** Simple utilities for wrapping regular functions in light async wrappers to do async-pipeline any fan-out/fan-in patterns.
 - **Iter tools:** Light generic slice wrapper for alternative functional/chaining syntax similar to Rust/Typescript.
 
 ʕ◔ϖ◔ʔ
+
+The mission of this project is to make it easy to compose normal business logic into complex async patterns. We should spend most our mental energy solving our core problems instead of worrying about race conditions, deadlocks, channel states, and go-routine leaks. The patterns published here are all intended to serve that goal.
 
 ## Async iter tools
 
@@ -13,7 +15,9 @@
 
 Orchestrate a series of functions into a branching async pipeline with the `Pipeline` type.
 
-Example of regular functions including a generator:
+#### Example
+
+Start with a generator function and some simple transformers:
 
 ```go
 func exampleGen() func() (int, bool, error) {
@@ -65,7 +69,9 @@ Data always flows downstream from generator through stages sequentially. When a 
 
 There is no distinct end stage. Any side-effects/outputs like db writes or API posts should be handled inside a Stage function wherever appropriate.
 
-#### Log
+Any error encountered at any stage will short-circuit the pipeline.
+
+#### Insight
 
 It may be helpful during testing to audit what is happening inside a pipeline.
 
@@ -97,6 +103,8 @@ The node id shown in the table is constructed as stage-index:parent-index:func-i
 "The second parent node" in this context can also be called the func at index 1 of the fourth stage.
 
 Throttle stages will not be logged but will increment the node id indexes.
+
+> Note, you only pay for what you use. If logging it not enabled, these states are not tracked.
 
 #### Throttle
 
@@ -179,6 +187,8 @@ if err != nil {
 fmt.Printf("Node: %s\nCount: %d\n", count[0].NodeID, count[0].Count)
 ```
 
+This is helpful if slices/maps are passed through the pipeline and you want to tally the total number or individual records processed.
+
 #### Example
 
 For a more realistic pipeline example, see `./cmd/example.go`
@@ -201,6 +211,7 @@ tasks := []func() (string, error){
         return "Async!", nil
     },
 }
+
 // Run all tasks at the same time and collect results/err
 results, err := gliter.InParallel(tasks)
 if err != nil {
