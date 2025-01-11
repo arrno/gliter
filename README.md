@@ -9,6 +9,18 @@
 
 The mission of this project is to make it easy to compose normal business logic into complex async patterns. Ideally, we should spend most our mental energy solving our core problems instead of worrying about race conditions, deadlocks, channel states, and go-routine leaks. The patterns published here are all intended to serve that goal.
 
+Download:
+
+```
+go get github.com/arrno/gliter
+```
+
+Import:
+
+```go
+import "github.com/arrno/gliter"
+```
+
 ## Async iter tools
 
 ### Pipelines
