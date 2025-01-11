@@ -191,6 +191,9 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 
 	// Chain stages
 	for idx, stage := range p.stages {
+		if len(stage.handlers) == 0 {
+			continue
+		}
 		if stage.stageType == THROTTLE {
 			prevOuts = SliceToList(ThrottleBy(prevOuts.Iter(), anyDone, len(stage.handlers)))
 			continue

@@ -212,6 +212,17 @@ func TestPipelineTally(t *testing.T) {
 	assert.Equal(t, count[0].Count, 30)
 }
 
+func TestEmptyStage(t *testing.T) {
+	count, err := NewPipeline(exampleGen()).
+		Config(PLConfig{ReturnCount: true}).
+		Stage(
+			[]func(i int) (int, error){},
+		).
+		Run()
+	assert.Nil(t, err)
+	assert.Equal(t, count[0].Count, 5)
+}
+
 type Collect[T any] struct {
 	mu    sync.Mutex
 	items []T
