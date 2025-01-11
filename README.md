@@ -167,7 +167,7 @@ pipeline := NewPipeline(exampleGen())
 tally := pipeline.Tally()
 
 endWithTally := func(i int) (int, error) {
-    tally <- 1
+    tally <- 1 // any integer
     return exampleEnd(i)
 }
 
@@ -184,6 +184,7 @@ if err != nil {
     panic(err)
 }
 
+// All integers sent to tally are summed
 fmt.Printf("Node: %s\nCount: %d\n", count[0].NodeID, count[0].Count)
 ```
 

@@ -15,7 +15,7 @@ In this example, we fetch paginated transaction records from an API, transform t
 by two distinct transform functions, and store the results in a database.
 
 By using a GLiter Pipeline, we can reduce ingest latency by storing records to the DB
-while we're fetching pages from the API (and transforming). By running all stages
+while we're fetching the next page from the API (and transforming). By running all stages
 concurrently, the throughput is increased.
 
 Since we have two transformers stacked in the middle stage, our pipeline is also forked
@@ -186,9 +186,6 @@ func ExampleMain() {
 		return struct{}{}, nil
 	}
 
-	// `sf` is a type alias to make the code easier to read.
-	type sf []func(any) (any, error)
-
 	// We create a new pipeline out of our generator.
 	pipeline := gliter.NewPipeline(gen())
 
@@ -198,6 +195,9 @@ func ExampleMain() {
 	storeWithTally := func(inbound any) (any, error) {
 		return store(inbound, tally)
 	}
+
+	// `sf` is a type alias to make the code easier to read.
+	type sf []func(any) (any, error)
 
 	// Lastly, we assemble our pipeline stages, enable logging, and run the pipeline.
 	count, err := pipeline.
