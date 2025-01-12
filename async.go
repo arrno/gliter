@@ -93,9 +93,15 @@ func TeeBy[T any](in <-chan T, done <-chan interface{}, n int) (outR []<-chan T)
 			select {
 			case val, ok := <-in:
 				if ok {
+					var wg sync.WaitGroup
+					wg.Add(len(outW))
 					for _, ch := range outW {
-						ch <- val
+						go func() {
+							defer wg.Done()
+							WriteOrDone(val, ch, done)
+						}()
 					}
+					wg.Wait()
 				} else {
 					return
 				}
