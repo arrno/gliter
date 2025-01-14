@@ -14,15 +14,11 @@ func TestPipeline(t *testing.T) {
 	col, exampleEnd := makeEnd()
 	_, err := NewPipeline(exampleGen()).
 		Stage(
-			[]func(i int) (int, error){
-				exampleMid, // branch A
-				exampleMid, // branch B
-			},
+			exampleMid, // branch A
+			exampleMid, // branch B
 		).
 		Stage(
-			[]func(i int) (int, error){
-				exampleEnd,
-			},
+			exampleEnd,
 		).
 		Run()
 	assert.Nil(t, err)
@@ -38,15 +34,11 @@ func TestPipelineErr(t *testing.T) {
 	_, exampleEnd := makeEnd()
 	_, err := NewPipeline(exampleGen()).
 		Stage(
-			[]func(i int) (int, error){
-				exampleMid,    // branch A
-				exampleMidErr, // branch B
-			},
+			exampleMid,    // branch A
+			exampleMidErr, // branch B
 		).
 		Stage(
-			[]func(i int) (int, error){
-				exampleEnd,
-			},
+			exampleEnd,
 		).
 		Run()
 	assert.NotNil(t, err)
@@ -55,15 +47,11 @@ func TestPipelineErr(t *testing.T) {
 	_, exampleEnd = makeEnd()
 	_, err = NewPipeline(exampleGen()).
 		Stage(
-			[]func(i int) (int, error){
-				exampleMid,    // branch A
-				exampleMidErr, // branch B
-			},
+			exampleMid,    // branch A
+			exampleMidErr, // branch B
 		).
 		Stage(
-			[]func(i int) (int, error){
-				exampleEnd,
-			},
+			exampleEnd,
 		).
 		Throttle(1).
 		Run()
@@ -79,14 +67,10 @@ func TestPipelineGenErr(t *testing.T) {
 		_, exampleEnd := makeEnd()
 		_, err := NewPipeline(gen).
 			Stage(
-				[]func(i int) (int, error){
-					exampleMid,
-				},
+				exampleMid,
 			).
 			Stage(
-				[]func(i int) (int, error){
-					exampleEnd,
-				},
+				exampleEnd,
 			).
 			Run()
 		assert.NotNil(t, err)
@@ -97,22 +81,16 @@ func TestPipelineFork(t *testing.T) {
 	col, exampleEnd := makeEnd()
 	_, err := NewPipeline(exampleGen()).
 		Stage(
-			[]func(i int) (int, error){
-				exampleMid, // branch A
-				exampleMid, // branch B
-			},
+			exampleMid, // branch A
+			exampleMid, // branch B
 		).
 		Stage(
-			[]func(i int) (int, error){
-				exampleMid, // branches A.C, B.C
-				exampleMid, // branches A.D, B.D
-				exampleMid, // branches A.E, B.E
-			},
+			exampleMid, // branches A.C, B.C
+			exampleMid, // branches A.D, B.D
+			exampleMid, // branches A.E, B.E
 		).
 		Stage(
-			[]func(i int) (int, error){
-				exampleEnd,
-			},
+			exampleEnd,
 		).
 		Run()
 	// 1, 2, 3, 4, 5
@@ -136,23 +114,17 @@ func TestPipelineThrottle(t *testing.T) {
 	col, exampleEnd := makeEnd()
 	_, err := NewPipeline(exampleGen()).
 		Stage(
-			[]func(i int) (int, error){
-				exampleMid, // branch A
-				exampleMid, // branch B
-			},
+			exampleMid, // branch A
+			exampleMid, // branch B
 		).
 		Stage(
-			[]func(i int) (int, error){
-				exampleMid, // branches A.C, B.C
-				exampleMid, // branches A.D, B.D
-				exampleMid, // branches A.E, B.E
-			},
+			exampleMid, // branches A.C, B.C
+			exampleMid, // branches A.D, B.D
+			exampleMid, // branches A.E, B.E
 		).
 		Throttle(2). // merge into branches X, Z
 		Stage(
-			[]func(i int) (int, error){
-				exampleEnd,
-			},
+			exampleEnd,
 		).
 		Run()
 	// 1, 2, 3, 4, 5
@@ -185,22 +157,16 @@ func TestPipelineTally(t *testing.T) {
 
 	count, err := pipeline.
 		Stage(
-			[]func(i int) (int, error){
-				exampleMid, // branch A
-				exampleMid, // branch B
-			},
+			exampleMid, // branch A
+			exampleMid, // branch B
 		).
 		Stage(
-			[]func(i int) (int, error){
-				exampleMid, // branches A.C, B.C
-				exampleMid, // branches A.D, B.D
-				exampleMid, // branches A.E, B.E
-			},
+			exampleMid, // branches A.C, B.C
+			exampleMid, // branches A.D, B.D
+			exampleMid, // branches A.E, B.E
 		).
 		Stage(
-			[]func(i int) (int, error){
-				endWithTally,
-			},
+			endWithTally,
 		).
 		Run()
 
@@ -215,9 +181,7 @@ func TestPipelineTally(t *testing.T) {
 func TestEmptyStage(t *testing.T) {
 	count, err := NewPipeline(exampleGen()).
 		Config(PLConfig{ReturnCount: true}).
-		Stage(
-			[]func(i int) (int, error){},
-		).
+		Stage().
 		Run()
 	assert.Nil(t, err)
 	assert.Equal(t, count[0].Count, 5)

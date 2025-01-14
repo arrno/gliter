@@ -196,19 +196,16 @@ func ExampleMain() {
 		return store(inbound, tally)
 	}
 
-	// `sf` is a type alias to make the code easier to read.
-	type sf []func(any) (any, error)
-
 	// Lastly, we assemble our pipeline stages, enable logging, and run the pipeline.
 	count, err := pipeline.
 		Config(gliter.PLConfig{LogCount: true}).
-		Stage(sf{
+		Stage(
 			ConvertToCents,
 			ApplyEvenFee,
-		}).
-		Stage(sf{
+		).
+		Stage(
 			storeWithTally,
-		}).
+		).
 		Run()
 
 	if err != nil {

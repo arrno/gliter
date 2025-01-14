@@ -58,15 +58,11 @@ Assemble the functions into a new async pipeline with automatic branching using 
 ```go
 gliter.NewPipeline(exampleGen()).
     Stage(
-        []func(i int) (int, error){
-            exampleMid, // branch A
-            exampleMid, // branch B
-        },
+        exampleMid, // branch A
+        exampleMid, // branch B
     ).
     Stage(
-        []func(i int) (int, error){
-            exampleEnd, // Downstream of fork, exists in both branches
-        },
+        exampleEnd, // Downstream of fork, exists in both branches
     ).
     Run()
 ```
@@ -126,23 +122,17 @@ What if our end stage results in a high number of concurrent output streams that
 // With concurrency throttling
 gliter.NewPipeline(exampleGen()).
     Stage(
-        []func(i int) (int, error){
-            exampleMid, // branch A
-            exampleMid, // branch B
-        },
+        exampleMid, // branch A
+        exampleMid, // branch B
     ).
     Stage(
-        []func(i int) (int, error){
-            exampleMid, // branches A.C, B.C
-            exampleMid, // branches A.D, B.D
-            exampleMid, // branches A.E, B.E
-        },
+        exampleMid, // branches A.C, B.C
+        exampleMid, // branches A.D, B.D
+        exampleMid, // branches A.E, B.E
     ).
     Throttle(2). // merge into branches X, Z
     Stage(
-        []func(i int) (int, error){
-            exampleEnd,
-        },
+        exampleEnd,
     ).
     Run()
 ```
@@ -185,11 +175,7 @@ endWithTally := func(i int) (int, error) {
 
 // Produces one `PLNodeCount` for node "tally"
 count, err := pipeline.
-    Stage(
-        []func(i int) (int, error){
-            endWithTally,
-        },
-    ).
+    Stage(endWithTally).
     Run()
 
 if err != nil {

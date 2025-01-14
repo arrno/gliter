@@ -48,7 +48,7 @@ func (p *Pipeline[T]) Tally() chan<- int {
 
 // Stage pushes a new stage onto the pipeline. A stage should have > 0 transform functions. Each
 // transform function beyond the first forks the pipeline into an additional downstream branch.
-func (p *Pipeline[T]) Stage(fs []func(data T) (T, error)) *Pipeline[T] {
+func (p *Pipeline[T]) Stage(fs ...func(data T) (T, error)) *Pipeline[T] {
 	st := stage[T]{
 		stageType: FORK,
 		handlers:  fs,
