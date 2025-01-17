@@ -2,7 +2,6 @@ package gliter
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 	"sort"
 	"sync"
@@ -287,7 +286,6 @@ func makeEndBatch() (*Collect[int], func(set []int) ([]int, error)) {
 	col := NewCollect[int]()
 	return col, func(set []int) ([]int, error) {
 		for _, j := range set {
-			fmt.Println(j)
 			r := j * 2
 			col.mu.Lock()
 			col.items = append(col.items, r)
