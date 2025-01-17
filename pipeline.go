@@ -1,6 +1,7 @@
 package gliter
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -10,6 +11,13 @@ type stageType int
 const (
 	FORK stageType = iota
 	THROTTLE
+	BATCH
+)
+
+var (
+	ErrNoGenerator   error = errors.New("Pipeline run error. Invalid pipeline: No generator provided")
+	ErrEmptyStage    error = errors.New("Pipeline run error. Empty stage: No functions provided in stage")
+	ErrEmptyThrottle error = errors.New("Pipeline run error. Empty throttle: Throttle must be a positive value")
 )
 
 // PLConfig controls limited pipeline behavior.
@@ -26,16 +34,24 @@ type stage[T any] struct {
 	handlers  []func(data T) (T, error)
 }
 
+type batch[T any] struct {
+	stage   int
+	size    int
+	handler func(data []T) ([]T, error)
+}
+
 // Pipeline spawns threads for all stage functions and orchestrates channel signals between them.
 type Pipeline[T any] struct {
 	generator func() (T, bool, error)
 	stages    []stage[T]
+	batches   map[int]batch[T]
 	tally     <-chan int
 	config    PLConfig
 }
 
 func NewPipeline[T any](gen func() (T, bool, error)) *Pipeline[T] {
 	return &Pipeline[T]{
+		batches:   map[int]batch[T]{},
 		generator: gen,
 	}
 }
@@ -54,6 +70,14 @@ func (p *Pipeline[T]) Stage(fs ...func(data T) (T, error)) *Pipeline[T] {
 		handlers:  fs,
 	}
 	p.stages = append(p.stages, st)
+	return p
+}
+
+// Batch pushes a special batch stage onto the pipeline of size n. A batch allows you to operate on a set of items.
+// This is helpful for expensive operations such as DB writes.
+func (p *Pipeline[T]) Batch(n int, f func(set []T) ([]T, error)) *Pipeline[T] {
+	p.batches[len(p.stages)] = batch[T]{stage: len(p.stages), size: n, handler: f}
+	p.stages = append(p.stages, stage[T]{stageType: BATCH, handlers: make([]func(data T) (T, error), 1)})
 	return p
 }
 
@@ -87,15 +111,18 @@ func (p *Pipeline[T]) handleStageFunc(
 	stepSignal chan<- any,
 	stepDone <-chan any,
 ) (outChan chan T, errChan chan error, node *PLNode[T]) {
+
 	wg.Add(1)
 	errChan = make(chan error)
 	outChan = make(chan T)
 	var val T
 	node = NewPLNodeAs(id, val)
 	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
+
 	if stepDone != nil {
 		done = Any(done, stepDone)
 	}
+
 	go func() {
 		defer func() {
 			close(outChan)
@@ -116,7 +143,7 @@ func (p *Pipeline[T]) handleStageFunc(
 				}
 				if err != nil {
 					if WriteOrDone(err, errChan, done) {
-						continue
+						return
 					} else {
 						return
 					}
@@ -132,8 +159,89 @@ func (p *Pipeline[T]) handleStageFunc(
 	return
 }
 
+func (p *Pipeline[T]) handleBatchFunc(
+	id string,
+	inChan <-chan T,
+	index int,
+	done <-chan interface{},
+	wg *sync.WaitGroup,
+	stepSignal chan<- any,
+	stepDone <-chan any,
+) (outChan chan T, errChan chan error, node *PLNode[T]) {
+
+	wg.Add(1)
+	errChan = make(chan error)
+	outChan = make(chan T)
+	var val T
+	node = NewPLNodeAs(id, val)
+	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
+	if stepDone != nil {
+		done = Any(done, stepDone)
+	}
+
+	batch := p.batches[index]
+	queue := make([]T, 0, batch.size)
+
+	handleBatch := func() bool {
+		outSet, err := batch.handler(queue)
+		if keepCount {
+			node.IncAsBatch(outSet)
+		}
+		if stepSignal != nil {
+			var T any
+			if !WriteOrDone(T, stepSignal, done) {
+				return false
+			}
+		}
+		if err != nil {
+			if WriteOrDone(err, errChan, done) {
+				return false
+			} else {
+				return false
+			}
+		}
+		for _, out := range outSet {
+			if !WriteOrDone(out, outChan, done) {
+				return false
+			}
+		}
+		return true
+	}
+
+	go func() {
+		defer func() {
+			close(outChan)
+			close(errChan)
+			wg.Done()
+		}()
+		for {
+			if val, ok := ReadOrDone(inChan, done); ok {
+				queue = append(queue, val)
+				if len(queue) >= batch.size {
+					if !handleBatch() {
+						return
+					}
+					queue = nil
+				}
+			} else {
+				if len(queue) > 0 && !handleBatch() {
+					return
+				}
+				queue = nil
+				return
+			}
+		}
+	}()
+
+	return
+}
+
 // Run builds and launches all the pipeline stages.
 func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
+
+	if p.generator == nil {
+		return nil, errors.New("pipeline run error. Invalid pipeline: No generator provided")
+	}
 
 	// Init logging helpers
 	var val T
@@ -154,9 +262,9 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 		anyDone = Any(done, stepDone)
 	}
 	dataChan := make(chan T)
+	errChan := make(chan error)
 	var wg sync.WaitGroup
 
-	errChan := make(chan error)
 	// Init generator
 	wg.Add(1)
 	go func() {
@@ -206,15 +314,31 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 			parentNode := prevNodes.At(j)
 			forkOut := TeeBy(po, anyDone, len(stage.handlers))
 			for i, f := range stage.handlers { // for current stage
-				outChan, errChan, node := p.handleStageFunc(
-					fmt.Sprintf("%d:%d:%d", idx, j, i),
-					forkOut[i],
-					f,
-					anyDone,
-					&wg,
-					stepSignal,
-					stepDone,
-				)
+				// var outChan, errChan, node
+				var outChan chan T
+				var errChan chan error
+				var node *PLNode[T]
+				if stage.stageType == BATCH {
+					outChan, errChan, node = p.handleBatchFunc(
+						fmt.Sprintf("%d:%d:%d", idx, j, i),
+						forkOut[i],
+						idx,
+						anyDone,
+						&wg,
+						stepSignal,
+						stepDone,
+					)
+				} else {
+					outChan, errChan, node = p.handleStageFunc(
+						fmt.Sprintf("%d:%d:%d", idx, j, i),
+						forkOut[i],
+						f,
+						anyDone,
+						&wg,
+						stepSignal,
+						stepDone,
+					)
+				}
 				errChans.Push(errChan)
 				outChans.Push(outChan)
 				outNodes.Push(node)
@@ -255,6 +379,7 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 		}()
 	}
 
+	// Conditional tally
 	var tallyChan chan int
 	var tallyDone chan any
 	// if tally was created
@@ -275,8 +400,8 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 		}()
 	}
 
+	// Capture, display/return results
 	tallyResult := 0
-	// Capture results
 	wg.Wait()
 	if p.tally != nil {
 		close(tallyDone)

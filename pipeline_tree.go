@@ -123,6 +123,13 @@ func (n *PLNode[T]) IncAs(val T) {
 	n.count++
 }
 
+func (n *PLNode[T]) IncAsBatch(val []T) {
+	if len(val) > 0 {
+		n.val = val[len(val)-1]
+	}
+	n.count++
+}
+
 func (n *PLNode[T]) Spawn() *PLNode[T] {
 	child := NewPLNode[T]()
 	n.children = append(n.children, child)

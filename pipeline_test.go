@@ -2,6 +2,7 @@ package gliter
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"sort"
 	"sync"
@@ -12,7 +13,7 @@ import (
 
 func TestPipeline(t *testing.T) {
 	col, exampleEnd := makeEnd()
-	_, err := NewPipeline(exampleGen()).
+	_, err := NewPipeline(exampleGen(5)).
 		Stage(
 			exampleMid, // branch A
 			exampleMid, // branch B
@@ -32,7 +33,7 @@ func TestPipeline(t *testing.T) {
 
 func TestPipelineErr(t *testing.T) {
 	_, exampleEnd := makeEnd()
-	_, err := NewPipeline(exampleGen()).
+	_, err := NewPipeline(exampleGen(5)).
 		Stage(
 			exampleMid,    // branch A
 			exampleMidErr, // branch B
@@ -45,7 +46,7 @@ func TestPipelineErr(t *testing.T) {
 
 	// With throttle
 	_, exampleEnd = makeEnd()
-	_, err = NewPipeline(exampleGen()).
+	_, err = NewPipeline(exampleGen(5)).
 		Stage(
 			exampleMid,    // branch A
 			exampleMidErr, // branch B
@@ -79,7 +80,7 @@ func TestPipelineGenErr(t *testing.T) {
 
 func TestPipelineFork(t *testing.T) {
 	col, exampleEnd := makeEnd()
-	_, err := NewPipeline(exampleGen()).
+	_, err := NewPipeline(exampleGen(5)).
 		Stage(
 			exampleMid, // branch A
 			exampleMid, // branch B
@@ -112,7 +113,7 @@ func TestPipelineFork(t *testing.T) {
 
 func TestPipelineThrottle(t *testing.T) {
 	col, exampleEnd := makeEnd()
-	_, err := NewPipeline(exampleGen()).
+	_, err := NewPipeline(exampleGen(5)).
 		Stage(
 			exampleMid, // branch A
 			exampleMid, // branch B
@@ -147,7 +148,7 @@ func TestPipelineThrottle(t *testing.T) {
 func TestPipelineTally(t *testing.T) {
 	_, exampleEnd := makeEnd()
 
-	pipeline := NewPipeline(exampleGen())
+	pipeline := NewPipeline(exampleGen(5))
 	tally := pipeline.Tally()
 
 	endWithTally := func(i int) (int, error) {
@@ -179,12 +180,39 @@ func TestPipelineTally(t *testing.T) {
 }
 
 func TestEmptyStage(t *testing.T) {
-	count, err := NewPipeline(exampleGen()).
+	count, err := NewPipeline(exampleGen(5)).
 		Config(PLConfig{ReturnCount: true}).
 		Stage().
 		Run()
 	assert.Nil(t, err)
 	assert.Equal(t, count[0].Count, 5)
+	//
+	count, err = NewPipeline(exampleGen(5)).
+		Config(PLConfig{ReturnCount: true}).
+		Throttle(0).
+		Run()
+	assert.Nil(t, err)
+	assert.Equal(t, count[0].Count, 5)
+}
+
+func TestPipelineBatch(t *testing.T) {
+	col, exampleEnd := makeEndBatch()
+	_, err := NewPipeline(exampleGen(23)).
+		Batch(
+			10,
+			exampleEnd,
+		).
+		Run()
+	assert.Nil(t, err)
+	expected := make([]int, 23)
+	for i := range 23 {
+		expected[i] = (i + 1) * 2
+	}
+	actual := col.items
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i] < actual[j]
+	})
+	assert.True(t, reflect.DeepEqual(expected, actual))
 }
 
 type Collect[T any] struct {
@@ -198,8 +226,11 @@ func NewCollect[T any]() *Collect[T] {
 	}
 }
 
-func exampleGen() func() (int, bool, error) {
-	data := []int{1, 2, 3, 4, 5}
+func exampleGen(n int) func() (int, bool, error) {
+	data := make([]int, n)
+	for i := range n {
+		data[i] = i + 1
+	}
 	index := -1
 	return func() (int, bool, error) {
 		index++
@@ -249,6 +280,20 @@ func makeEnd() (*Collect[int], func(i int) (int, error)) {
 		defer col.mu.Unlock()
 		col.items = append(col.items, r)
 		return r, nil
+	}
+}
+
+func makeEndBatch() (*Collect[int], func(set []int) ([]int, error)) {
+	col := NewCollect[int]()
+	return col, func(set []int) ([]int, error) {
+		for _, j := range set {
+			fmt.Println(j)
+			r := j * 2
+			col.mu.Lock()
+			col.items = append(col.items, r)
+			col.mu.Unlock()
+		}
+		return nil, nil
 	}
 }
 
