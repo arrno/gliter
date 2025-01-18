@@ -1,6 +1,6 @@
-# GLiter ✨
+# Gliter ✨
 
-**Go Lang iter tools!** This package has two utilities:
+**Go lang iter tools!** This package has two utilities:
 
 - **Async iter tools:** Powerful API for composing regular functions into complex async-pipeline and fan-out/fan-in patterns.
 - **Iter tools:** Light generic slice wrapper for alternative functional/chaining syntax similar to Rust/Typescript.
@@ -85,9 +85,9 @@ It may be helpful during testing to audit what is happening inside a pipeline.
 
 To do so, optionally set pipeline logging via one of the following modes in `pipeline.Config(gliter.PLConfig{...})`:
 
+- `LogCount` - Log result count table (start here)
+- `LogEmit` - Log every emit
 - `LogAll` - Log emit and count
-- `LogEmit` - Only emit
-- `LogCount` - Only count
 - `LogStep` - Interactive CLI stepper
 
 ```
@@ -155,8 +155,10 @@ func exampleBatch(items []int) ([]int, error) {
 }
 
 gliter.NewPipeline(exampleGen()).
+    Config(gliter.PLConfig{LogCount: true}).
     Stage(exampleMid).
     Batch(100, exampleBatch).
+    Stage(exampleEnd).
     Run()
 ```
 

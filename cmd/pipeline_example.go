@@ -14,7 +14,7 @@ import (
 In this example, we fetch paginated transaction records from an API, transform them
 by two distinct transform functions, and store the results in a database.
 
-By using a GLiter Pipeline, we can reduce ingest latency by storing records to the DB
+By using a gliter Pipeline, we can reduce ingest latency by storing records to the DB
 while we're fetching the next page from the API (and transforming). By running all stages
 concurrently, the throughput is increased.
 
