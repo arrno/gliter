@@ -141,6 +141,27 @@ Here is a visual diagram of the pipeline the code produces:
 
 ![Alt text](./diag/small-chart.png?raw=true "Title")
 
+#### Batch
+
+The inverse of throttling. What if one of our stages does something slow, like a DB write, that could be optimized with batching? Use a special batch stage to pool items together before processing:
+
+```go
+func exampleBatch(items []int) ([]int, error) {
+    // A slow/expensive operation
+    if err := storeToDB(items); err != nil {
+        return nil, err
+    }
+    return items, nil
+}
+
+gliter.NewPipeline(exampleGen()).
+    Stage(exampleMid).
+    Batch(100, exampleBatch).
+    Run()
+```
+
+gliter will handle converting the input-stream to batch and output-batch to stream for you which means batch stages are composable with normal stages.
+
 #### Tally
 
 There are two ways to tally items processed by the pipeline.

@@ -77,6 +77,28 @@ func TestPipelineGenErr(t *testing.T) {
 	}
 }
 
+func TestPipelineEndErr(t *testing.T) {
+	_, endErr := makeEndErr()
+	_, err := NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid,
+		).
+		Stage(
+			endErr,
+		).
+		Run()
+	assert.NotNil(t, err)
+
+	_, endBatchErr := makeEndBatchErr()
+	_, err = NewPipeline(exampleGen(5)).
+		Batch(
+			10,
+			endBatchErr,
+		).
+		Run()
+	assert.NotNil(t, err)
+}
+
 func TestPipelineFork(t *testing.T) {
 	col, exampleEnd := makeEnd()
 	_, err := NewPipeline(exampleGen(5)).
@@ -192,14 +214,21 @@ func TestEmptyStage(t *testing.T) {
 		Run()
 	assert.Nil(t, err)
 	assert.Equal(t, count[0].Count, 5)
+
+	// Empty generator
+	_, err = NewPipeline[int](nil).
+		Config(PLConfig{ReturnCount: true}).
+		Stage(exampleMid).
+		Run()
+	assert.NotNil(t, err)
 }
 
 func TestPipelineBatch(t *testing.T) {
-	col, exampleEnd := makeEndBatch()
+	col, exampleEndBatch := makeEndBatch()
 	_, err := NewPipeline(exampleGen(23)).
 		Batch(
 			10,
-			exampleEnd,
+			exampleEndBatch,
 		).
 		Run()
 	assert.Nil(t, err)
@@ -207,6 +236,49 @@ func TestPipelineBatch(t *testing.T) {
 	for i := range 23 {
 		expected[i] = (i + 1) * 2
 	}
+	actual := col.items
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i] < actual[j]
+	})
+	assert.True(t, reflect.DeepEqual(expected, actual))
+
+	col, exampleEnd := makeEnd()
+	_, err = NewPipeline(exampleGen(23)).
+		Batch(
+			10,
+			exampleMidBatch,
+		).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.Nil(t, err)
+	actual = col.items
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i] < actual[j]
+	})
+	expected = make([]int, 23)
+	for i := range 23 {
+		v := (i + 1) * 2
+		expected[i] = v * v
+	}
+	assert.True(t, reflect.DeepEqual(expected, actual))
+}
+
+func TestPipelineBatchBranch(t *testing.T) {
+	col, exampleEnd := makeEnd()
+	_, err := NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Batch(2, exampleMidBatch).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.Nil(t, err)
+	expected := []int{16, 16, 64, 64, 144, 144, 256, 256, 400, 400}
 	actual := col.items
 	sort.Slice(actual, func(i, j int) bool {
 		return actual[i] < actual[j]
@@ -271,9 +343,31 @@ func exampleMid(i int) (int, error) {
 	return i * 2, nil
 }
 
+func exampleMidBatch(s []int) ([]int, error) {
+	results := make([]int, 0, len(s))
+	for _, i := range s {
+		results = append(results, i*2)
+	}
+	return results, nil
+}
+
 func makeEnd() (*Collect[int], func(i int) (int, error)) {
 	col := NewCollect[int]()
 	return col, func(i int) (int, error) {
+		r := i * i
+		col.mu.Lock()
+		defer col.mu.Unlock()
+		col.items = append(col.items, r)
+		return r, nil
+	}
+}
+
+func makeEndErr() (*Collect[int], func(i int) (int, error)) {
+	col := NewCollect[int]()
+	return col, func(i int) (int, error) {
+		if i > 2 {
+			return 0, errors.New("err")
+		}
 		r := i * i
 		col.mu.Lock()
 		defer col.mu.Unlock()
@@ -295,6 +389,21 @@ func makeEndBatch() (*Collect[int], func(set []int) ([]int, error)) {
 	}
 }
 
+func makeEndBatchErr() (*Collect[int], func(set []int) ([]int, error)) {
+	col := NewCollect[int]()
+	return col, func(set []int) ([]int, error) {
+		for _, j := range set {
+			if j > 2 {
+				return nil, errors.New("err")
+			}
+			r := j * 2
+			col.mu.Lock()
+			col.items = append(col.items, r)
+			col.mu.Unlock()
+		}
+		return nil, nil
+	}
+}
 func exampleMidErr(i int) (int, error) {
 	if i > 2 {
 		return 0, errors.New("err")
