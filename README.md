@@ -246,6 +246,11 @@ for _, result := range results {
 }
 ```
 
+The `InParallel` utility is meant to complement the `Pipeline` pattern in the following ways:
+
+- Use `InParallel` to run a set of unique pipelines concurrently
+- Call `InParallel` from inside a slow pipeline stage to fan-out/fan-in the expensive task
+
 ### Misc
 
 Other async helpers in this library include:
