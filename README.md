@@ -209,7 +209,7 @@ if err != nil {
 fmt.Printf("Node: %s\nCount: %d\n", count[0].NodeID, count[0].Count)
 ```
 
-This is helpful if slices/maps are passed through the pipeline and you want to tally the total number or individual records processed.
+This is helpful if slices/maps are passed through the pipeline and you want to tally the total number or individual records processed. **Note that the tally channel is only listened to while the pipeline is running and is closed when the pipeline completes.** For that reason, tally should only be written to inside of stage functions.
 
 #### Example
 
