@@ -381,17 +381,17 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 
 	// Conditional tally
 	var tallyChan chan int
-	var tallyDone chan any
+	var tallyDone chan any // tally needs to stay open until all stages exit
 	// if tally was created
 	if p.tally != nil {
 		tallyChan = make(chan int, 1)
 		tallyDone = make(chan any)
 		go func() {
-			anyAnyDone := Any(anyDone, tallyDone)
+			// anyAnyDone := Any(anyDone, tallyDone)
 			tallyCount := 0
 			defer func() { tallyChan <- tallyCount }()
 			for {
-				if val, ok := ReadOrDone(p.tally, anyAnyDone); ok {
+				if val, ok := ReadOrDone(p.tally, tallyDone); ok {
 					tallyCount += val
 				} else {
 					return
@@ -402,7 +402,7 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 
 	// Capture, display/return results
 	tallyResult := 0
-	wg.Wait()
+	wg.Wait() // wait for all stages to exit
 	if p.tally != nil {
 		close(tallyDone)
 		tallyResult = <-tallyChan

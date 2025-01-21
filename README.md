@@ -1,5 +1,8 @@
 # Gliter ✨
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/arrno/gliter.svg)](https://pkg.go.dev/github.com/arrno/gliter)
+[![Go Build](https://github.com/arrno/gliter/actions/workflows/go.yml/badge.svg)](https://github.com/arrno/gliter/actions/workflows/go.yml)
+
 **Go lang iter tools!** This package has two utilities:
 
 - **Async iter tools:** Powerful API for composing regular functions into complex async-pipeline and fan-out/fan-in patterns.
@@ -209,7 +212,7 @@ if err != nil {
 fmt.Printf("Node: %s\nCount: %d\n", count[0].NodeID, count[0].Count)
 ```
 
-This is helpful if slices/maps are passed through the pipeline and you want to tally the total number or individual records processed. **Note that the tally channel is only listened to while the pipeline is running and is closed when the pipeline completes.** For that reason, tally should only be written to inside of stage functions.
+This is helpful if slices/maps are passed through the pipeline and you want to tally the total number or individual records processed. **Note that the tally channel is listened to while the pipeline is running and is closed when all pipeline stages exit.** For that reason, tally can always be written to freely within a stage function. Writes to tally outside of a stage function however is not recommended.
 
 #### Example
 

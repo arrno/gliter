@@ -99,6 +99,36 @@ func TestPipelineEndErr(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
+func TestPipelineTallyErr(t *testing.T) {
+	_, exampleEnd := makeEnd()
+
+	pipeline := NewPipeline(exampleGenErrFour())
+	tally := pipeline.Tally()
+
+	endWithTally := func(i int) (int, error) {
+		tally <- 1
+		return exampleEnd(i)
+	}
+
+	_, err := pipeline.
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Stage(
+			exampleMid, // branches A.C, B.C
+			exampleMid, // branches A.D, B.D
+		).
+		Stage(
+			endWithTally,
+			endWithTally,
+			endWithTally,
+		).
+		Run()
+
+	assert.NotNil(t, err)
+}
+
 func TestPipelineFork(t *testing.T) {
 	col, exampleEnd := makeEnd()
 	_, err := NewPipeline(exampleGen(5)).
@@ -330,6 +360,24 @@ func exampleGenErrThree() func() (int, bool, error) {
 	return func() (int, bool, error) {
 		index++
 		if index > 1 {
+			return 0, false, errors.New("err")
+		}
+		if index == len(data) {
+			return 0, false, nil
+		}
+		return data[index], true, nil
+	}
+}
+
+func exampleGenErrFour() func() (int, bool, error) {
+	data := make([]int, 100)
+	for i := range 100 {
+		data[i] = i
+	}
+	index := -1
+	return func() (int, bool, error) {
+		index++
+		if index > 75 {
 			return 0, false, errors.New("err")
 		}
 		if index == len(data) {
