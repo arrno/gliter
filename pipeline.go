@@ -12,7 +12,7 @@ const (
 	FORK stageType = iota
 	THROTTLE
 	BATCH
-	QUEUE
+	BUFFER
 )
 
 var (
@@ -46,7 +46,7 @@ type Pipeline[T any] struct {
 	generator func() (T, bool, error)
 	stages    []stage[T]
 	batches   map[int]batch[T]
-	queues    map[int]uint
+	buffers   map[int]uint
 	tally     <-chan int
 	config    PLConfig
 }
@@ -54,6 +54,7 @@ type Pipeline[T any] struct {
 func NewPipeline[T any](gen func() (T, bool, error)) *Pipeline[T] {
 	return &Pipeline[T]{
 		batches:   map[int]batch[T]{},
+		buffers:   map[int]uint{},
 		generator: gen,
 	}
 }
@@ -83,11 +84,11 @@ func (p *Pipeline[T]) Batch(n int, f func(set []T) ([]T, error)) *Pipeline[T] {
 	return p
 }
 
-// Queue pushes a special queue stage onto the pipeline of size n. A queue effectively inserts a buffered channel of
+// Buffer pushes a special buffer stage onto the pipeline of size n. A buffer stage is effectively a buffered channel of
 // size n in between the previous and next stage.
-func (p *Pipeline[T]) Queue(n uint) *Pipeline[T] {
-	p.queues[len(p.stages)] = n
-	p.stages = append(p.stages, stage[T]{stageType: QUEUE, handlers: make([]func(data T) (T, error), 1)})
+func (p *Pipeline[T]) Buffer(n uint) *Pipeline[T] {
+	p.buffers[len(p.stages)] = n
+	p.stages = append(p.stages, stage[T]{stageType: BUFFER, handlers: make([]func(data T) (T, error), 1)})
 	return p
 }
 
@@ -124,7 +125,7 @@ func (p *Pipeline[T]) handleQueueFunc(
 
 	wg.Add(1)
 	errChan = make(chan error)
-	outChan = make(chan T, p.queues[index])
+	outChan = make(chan T, p.buffers[index])
 	var val T
 	node = NewPLNodeAs(id, val)
 	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
@@ -377,7 +378,7 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 				var outChan chan T
 				var errChan chan error
 				var node *PLNode[T]
-				if stage.stageType == QUEUE {
+				if stage.stageType == BUFFER {
 					outChan, errChan, node = p.handleQueueFunc(
 						fmt.Sprintf("%d:%d:%d", idx, j, i),
 						forkOut[i],

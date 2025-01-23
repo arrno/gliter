@@ -316,6 +316,27 @@ func TestPipelineBatchBranch(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(expected, actual))
 }
 
+func TestPipelineBuffer(t *testing.T) {
+	col, exampleEnd := makeEnd()
+	_, err := NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Buffer(5).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.Nil(t, err)
+	expected := []int{4, 4, 16, 16, 36, 36, 64, 64, 100, 100}
+	actual := col.items
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i] < actual[j]
+	})
+	assert.True(t, reflect.DeepEqual(expected, actual))
+}
+
 type Collect[T any] struct {
 	mu    sync.Mutex
 	items []T

@@ -51,8 +51,10 @@ func TestIterDoneLong(t *testing.T) {
 			data <- i
 		}
 	}()
+
 	results := make([]int, 100)
 	expected := make([]int, 100)
+
 	for i := range IterDone(data, done) {
 		results[i] = i
 	}
@@ -71,8 +73,10 @@ func TestIterDoneShort(t *testing.T) {
 			data <- i
 		}
 	}()
+
 	results := make([]int, 100)
 	expected := make([]int, 100)
+
 	for i := range IterDone(data, done) {
 		results[i] = i
 		if i == 20 {
