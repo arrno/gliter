@@ -12,6 +12,7 @@ const (
 	FORK stageType = iota
 	THROTTLE
 	BATCH
+	QUEUE
 )
 
 var (
@@ -45,6 +46,7 @@ type Pipeline[T any] struct {
 	generator func() (T, bool, error)
 	stages    []stage[T]
 	batches   map[int]batch[T]
+	queues    map[int]uint
 	tally     <-chan int
 	config    PLConfig
 }
@@ -81,6 +83,14 @@ func (p *Pipeline[T]) Batch(n int, f func(set []T) ([]T, error)) *Pipeline[T] {
 	return p
 }
 
+// Queue pushes a special queue stage onto the pipeline of size n. A queue effectively inserts a buffered channel of
+// size n in between the previous and next stage.
+func (p *Pipeline[T]) Queue(n uint) *Pipeline[T] {
+	p.queues[len(p.stages)] = n
+	p.stages = append(p.stages, stage[T]{stageType: QUEUE, handlers: make([]func(data T) (T, error), 1)})
+	return p
+}
+
 // Throttle pushes a special throttle stage onto the pipeline. A throttle stage will merge all upstream
 // branches into n downstream branches.
 func (p *Pipeline[T]) Throttle(n uint) *Pipeline[T] {
@@ -100,6 +110,55 @@ func (p *Pipeline[T]) handleLog(val T) {
 	if p.config.LogAll || p.config.LogEmit {
 		fmt.Printf("Emit -> %v\n", val)
 	}
+}
+
+func (p *Pipeline[T]) handleQueueFunc(
+	id string,
+	inChan <-chan T,
+	index int,
+	done <-chan interface{},
+	wg *sync.WaitGroup,
+	stepSignal chan<- any,
+	stepDone <-chan any,
+) (outChan chan T, errChan chan error, node *PLNode[T]) {
+
+	wg.Add(1)
+	errChan = make(chan error)
+	outChan = make(chan T, p.queues[index])
+	var val T
+	node = NewPLNodeAs(id, val)
+	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
+	if stepDone != nil {
+		done = Any(done, stepDone)
+	}
+
+	go func() {
+		defer func() {
+			close(outChan)
+			close(errChan)
+			wg.Done()
+		}()
+		for {
+			val, ok := ReadOrDone(inChan, done)
+			if !ok {
+				return
+			}
+			if keepCount {
+				node.IncAs(val)
+			}
+			if stepSignal != nil {
+				var T any
+				if !WriteOrDone(T, stepSignal, done) {
+					return
+				}
+			}
+			if !WriteOrDone(val, outChan, done) {
+				return
+			}
+		}
+	}()
+
+	return
 }
 
 func (p *Pipeline[T]) handleStageFunc(
@@ -318,7 +377,17 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 				var outChan chan T
 				var errChan chan error
 				var node *PLNode[T]
-				if stage.stageType == BATCH {
+				if stage.stageType == QUEUE {
+					outChan, errChan, node = p.handleQueueFunc(
+						fmt.Sprintf("%d:%d:%d", idx, j, i),
+						forkOut[i],
+						idx,
+						anyDone,
+						&wg,
+						stepSignal,
+						stepDone,
+					)
+				} else if stage.stageType == BATCH {
 					outChan, errChan, node = p.handleBatchFunc(
 						fmt.Sprintf("%d:%d:%d", idx, j, i),
 						forkOut[i],

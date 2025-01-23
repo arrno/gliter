@@ -261,6 +261,7 @@ Other async helpers in this library include:
 - Do your own throttling with `ThrottleBy`
 - Do your own channel forking with `TeeBy`
 - `ReadOrDone` + `WriteOrDone`
+- `IterDone` - iterate until read or done channel is closed
 - `Any` - take one from any, consolidating "done" channels
 
 ## Iter tools

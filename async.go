@@ -163,3 +163,18 @@ func Any(channels ...<-chan any) <-chan any {
 	}()
 	return orDone
 }
+
+func IterDone[T any](read <-chan T, done <-chan any) <-chan T {
+	out := make(chan T)
+	go func() {
+		defer close(out)
+		for {
+			val, ok := ReadOrDone(read, done)
+			if !ok {
+				return
+			}
+			out <- val
+		}
+	}()
+	return out
+}

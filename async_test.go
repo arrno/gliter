@@ -41,3 +41,46 @@ func TestInParallelErr(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.Equal(t, err.Error(), "error")
 }
+
+func TestIterDoneLong(t *testing.T) {
+	done := make(chan any)
+	data := make(chan int)
+	go func() {
+		defer close(data)
+		for i := range 100 {
+			data <- i
+		}
+	}()
+	results := make([]int, 100)
+	expected := make([]int, 100)
+	for i := range IterDone(data, done) {
+		results[i] = i
+	}
+	for i := range 100 {
+		expected[i] = i
+	}
+	assert.True(t, reflect.DeepEqual(expected, results))
+}
+
+func TestIterDoneShort(t *testing.T) {
+	done := make(chan any)
+	data := make(chan int)
+	go func() {
+		defer close(data)
+		for i := range 100 {
+			data <- i
+		}
+	}()
+	results := make([]int, 100)
+	expected := make([]int, 100)
+	for i := range IterDone(data, done) {
+		results[i] = i
+		if i == 20 {
+			close(done)
+		}
+	}
+	for i := range 21 {
+		expected[i] = i
+	}
+	assert.True(t, reflect.DeepEqual(expected, results))
+}
