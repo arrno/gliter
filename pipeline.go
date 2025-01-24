@@ -113,7 +113,7 @@ func (p *Pipeline[T]) handleLog(val T) {
 	}
 }
 
-func (p *Pipeline[T]) handleQueueFunc(
+func (p *Pipeline[T]) handleBufferFunc(
 	id string,
 	inChan <-chan T,
 	index int,
@@ -379,7 +379,7 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 				var errChan chan error
 				var node *PLNode[T]
 				if stage.stageType == BUFFER {
-					outChan, errChan, node = p.handleQueueFunc(
+					outChan, errChan, node = p.handleBufferFunc(
 						fmt.Sprintf("%d:%d:%d", idx, j, i),
 						forkOut[i],
 						idx,

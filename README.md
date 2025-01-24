@@ -167,6 +167,20 @@ gliter.NewPipeline(exampleGen()).
 
 gliter will handle converting the input-stream to batch and output-batch to stream for you which means batch stages are composable with normal stages.
 
+#### Buffer
+
+In certain situations, you may want to introduce a buffer before a slow/expensive stage. Doing so **will not increase the overall performance of your pipeline** but may aid in faster response signalling to an upstream caller. Add a buffer like this:
+
+```go
+gliter.NewPipeline(exampleGen()).
+    Stage(exampleMid).
+    Buffer(5).
+    Stage(exampleEnd).
+    Run()
+```
+
+In this example, `exampleMid` can process/emit up to 5 results while exampleEnd is busy. Once the buffer is full, `exampleMid` is blocked again until `exampleEnd` pulls from the buffer.
+
 #### Tally
 
 There are two ways to tally items processed by the pipeline.
