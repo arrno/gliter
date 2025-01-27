@@ -337,6 +337,49 @@ func TestPipelineBuffer(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(expected, actual))
 }
 
+func TestPipelineMix(t *testing.T) {
+	_, exampleEnd := makeEnd()
+	count, err := NewPipeline(exampleGen(5)).
+		Config(PLConfig{ReturnCount: true}).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Throttle(1). // merge into 1 branch
+		Batch(5, exampleMidBatch).
+		Buffer(2).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	expected := []PLNodeCount{
+		{
+			NodeID: "GEN",
+			Count:  5, // gen 5
+		},
+		{
+			NodeID: "0:0:0",
+			Count:  5, // branch a
+		},
+		{
+			NodeID: "0:0:1",
+			Count:  5, // branch b
+		},
+		// throttle 1
+		{
+			NodeID: "2:0:0",
+			Count:  2, // 5 per branch is 10 batched by 5 is 2
+		},
+		// buffer
+		{
+			NodeID: "4:0:0",
+			Count:  10, // 10 total items un-batched
+		},
+	}
+	assert.Nil(t, err)
+	assert.True(t, reflect.DeepEqual(expected, count))
+}
+
 type Collect[T any] struct {
 	mu    sync.Mutex
 	items []T

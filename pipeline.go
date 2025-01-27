@@ -30,6 +30,10 @@ type PLConfig struct {
 	LogStep     bool
 }
 
+func (c PLConfig) keepCount() bool {
+	return c.LogAll || c.LogCount || c.LogStep || c.ReturnCount
+}
+
 type stage[T any] struct {
 	stageType stageType
 	handlers  []func(data T) (T, error)
@@ -114,24 +118,15 @@ func (p *Pipeline[T]) handleLog(val T) {
 }
 
 func (p *Pipeline[T]) handleBufferFunc(
-	id string,
 	inChan <-chan T,
 	index int,
 	done <-chan interface{},
 	wg *sync.WaitGroup,
-	stepSignal chan<- any,
-	stepDone <-chan any,
-) (outChan chan T, errChan chan error, node *PLNode[T]) {
+) (outChan chan T, errChan chan error) {
 
 	wg.Add(1)
 	errChan = make(chan error)
 	outChan = make(chan T, p.buffers[index])
-	var val T
-	node = NewPLNodeAs(id, val)
-	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
-	if stepDone != nil {
-		done = Any(done, stepDone)
-	}
 
 	go func() {
 		defer func() {
@@ -143,15 +138,6 @@ func (p *Pipeline[T]) handleBufferFunc(
 			val, ok := ReadOrDone(inChan, done)
 			if !ok {
 				return
-			}
-			if keepCount {
-				node.IncAs(val)
-			}
-			if stepSignal != nil {
-				var T any
-				if !WriteOrDone(T, stepSignal, done) {
-					return
-				}
 			}
 			if !WriteOrDone(val, outChan, done) {
 				return
@@ -177,7 +163,7 @@ func (p *Pipeline[T]) handleStageFunc(
 	outChan = make(chan T)
 	var val T
 	node = NewPLNodeAs(id, val)
-	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
+	keepCount := p.config.keepCount()
 
 	if stepDone != nil {
 		done = Any(done, stepDone)
@@ -234,7 +220,7 @@ func (p *Pipeline[T]) handleBatchFunc(
 	outChan = make(chan T)
 	var val T
 	node = NewPLNodeAs(id, val)
-	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
+	keepCount := p.config.keepCount()
 	if stepDone != nil {
 		done = Any(done, stepDone)
 	}
@@ -312,7 +298,7 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 		stepSignal, stepDone = NewStepper(root).Run()
 		defer close(stepSignal)
 	}
-	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep || p.config.ReturnCount
+	keepCount := p.config.keepCount()
 
 	// Init async helpers
 	done := make(chan any)
@@ -379,14 +365,11 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 				var errChan chan error
 				var node *PLNode[T]
 				if stage.stageType == BUFFER {
-					outChan, errChan, node = p.handleBufferFunc(
-						fmt.Sprintf("%d:%d:%d", idx, j, i),
+					outChan, errChan = p.handleBufferFunc(
 						forkOut[i],
 						idx,
 						anyDone,
 						&wg,
-						stepSignal,
-						stepDone,
 					)
 				} else if stage.stageType == BATCH {
 					outChan, errChan, node = p.handleBatchFunc(
@@ -411,12 +394,16 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 				}
 				errChans.Push(errChan)
 				outChans.Push(outChan)
-				outNodes.Push(node)
-				parentNode.SpawnAs(node)
+				if node != nil {
+					outNodes.Push(node)
+					parentNode.SpawnAs(node)
+				}
 			}
 		}
 		prevOuts = outChans
-		prevNodes = outNodes
+		if stage.stageType != BUFFER { // pass over buffer layer silently
+			prevNodes = outNodes
+		}
 	}
 
 	// Listen for errors

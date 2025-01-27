@@ -113,7 +113,7 @@ The node id shown in the table is constructed as stage-index:parent-index:func-i
 
 "The second parent node" in this context can also be called the func at index 1 of the fourth stage.
 
-Throttle stages will not be logged but will increment the node id indexes.
+**Throttle and buffer stages are the only stage types that won't be logged explicitly but will increment the node id indexes.**
 
 > Note, you only pay for what you use. If logging it not enabled, these states are not tracked.
 
@@ -146,7 +146,7 @@ Here is a visual diagram of the pipeline the code produces:
 
 #### Batch
 
-The inverse of throttling. What if one of our stages does something slow, like a DB write, that could be optimized with batching? Use a special batch stage to pool items together before processing:
+What if one of our stages does something slow, like a DB write, that could be optimized with batching? Use a special batch stage to pool items together for bulk processing:
 
 ```go
 func exampleBatch(items []int) ([]int, error) {
