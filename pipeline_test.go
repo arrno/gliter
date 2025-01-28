@@ -196,6 +196,53 @@ func TestPipelineThrottle(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(expected, actual))
 }
 
+func TestPipelineThrottleErr(t *testing.T) {
+	_, exampleEnd := makeEnd()
+	_, err := NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Throttle(3).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.Equal(t, err, ErrInvalidThrottle)
+
+	_, err = NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Throttle(4).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.Nil(t, err)
+
+	_, err = NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Throttle(5).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.Equal(t, err, ErrInvalidThrottle)
+}
+
 func TestPipelineTally(t *testing.T) {
 	_, exampleEnd := makeEnd()
 

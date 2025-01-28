@@ -16,9 +16,10 @@ const (
 )
 
 var (
-	ErrNoGenerator   error = errors.New("Pipeline run error. Invalid pipeline: No generator provided")
-	ErrEmptyStage    error = errors.New("Pipeline run error. Empty stage: No functions provided in stage")
-	ErrEmptyThrottle error = errors.New("Pipeline run error. Empty throttle: Throttle must be a positive value")
+	ErrNoGenerator     error = errors.New("Pipeline run error. Invalid pipeline: No generator provided")
+	ErrEmptyStage      error = errors.New("Pipeline run error. Empty stage: No functions provided in stage")
+	ErrEmptyThrottle   error = errors.New("Pipeline run error. Empty throttle: Throttle must be a positive value")
+	ErrInvalidThrottle error = errors.New("Pipeline run error. Invalid throttle: Throttle value cannot be higher than channel count.")
 )
 
 // PLConfig controls limited pipeline behavior.
@@ -349,6 +350,16 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 			continue
 		}
 		if stage.stageType == THROTTLE {
+			// Invalid throttle length
+			if len(stage.handlers) > prevOuts.Len() {
+				throttleErr := make(chan error, 1)
+				throttleErr <- ErrInvalidThrottle
+				errChans.Push(throttleErr)
+				break
+			}
+			// child nodes of throttle don't exactly line up as you would expect in node tree
+			// that's ok so long as throttle size is smaller than previous stage.
+			// PLNode tree is just for logging.
 			prevOuts = SliceToList(ThrottleBy(prevOuts.Iter(), anyDone, len(stage.handlers)))
 			continue
 		}
