@@ -369,8 +369,8 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 		}
 
 		size := prevOuts.Len() * len(stage.handlers)
-		outChans := MakeList[chan T](uint(size))
-		outNodes := MakeList[*PLNode[T]](uint(size))
+		outChans := MakeList[chan T](0, uint(size))
+		outNodes := MakeList[*PLNode[T]](0, uint(size))
 
 		if stage.stageType == THROTTLE {
 			// Invalid throttle length
