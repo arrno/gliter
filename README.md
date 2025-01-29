@@ -5,8 +5,8 @@
 
 **Go lang iter tools!** This package has two utilities:
 
-- **Async iter tools:** Powerful API for composing regular functions into complex async-pipeline and fan-out/fan-in patterns.
-- **Iter tools:** Light generic slice wrapper for alternative functional/chaining syntax similar to Rust/Typescript.
+-   **Async iter tools:** Powerful API for composing regular functions into complex async-pipeline and fan-out/fan-in patterns.
+-   **Iter tools:** Light generic slice wrapper for alternative functional/chaining syntax similar to Rust/Typescript.
 
 ʕ◔ϖ◔ʔ
 
@@ -88,10 +88,10 @@ It may be helpful during testing to audit what is happening inside a pipeline.
 
 To do so, optionally set pipeline logging via one of the following modes in `pipeline.Config(gliter.PLConfig{...})`:
 
-- `LogCount` - Log result count table (start here)
-- `LogEmit` - Log every emit
-- `LogAll` - Log emit and count
-- `LogStep` - Interactive CLI stepper
+-   `LogCount` - Log result count table (start here)
+-   `LogEmit` - Log every emit
+-   `LogAll` - Log emit and count
+-   `LogStep` - Interactive CLI stepper
 
 ```
 Emit -> 4
@@ -113,7 +113,7 @@ The node id shown in the table is constructed as stage-index:parent-index:func-i
 
 "The second parent node" in this context can also be called the func at index 1 of the fourth stage.
 
-**Throttle and buffer stages are the only stage types that won't be logged explicitly but will increment the node id indexes.**
+Throttle and buffer stages are logged a bit differently as **[Throttle]** and **[Buffer]** respectively.
 
 > Note, you only pay for what you use. If logging it not enabled, these states are not tracked.
 
@@ -185,7 +185,7 @@ In this example, `exampleMid` can process/emit up to 5 results while exampleEnd 
 
 There are two ways to tally items processed by the pipeline.
 
-- Toggle on config to get all the node counts returned:
+-   Toggle on config to get all the node counts returned:
 
 ```go
 counts, err := gliter.
@@ -202,7 +202,7 @@ for _, count := range counts {
 }
 ```
 
-- For more granular control, use the `Tally` channel like this:
+-   For more granular control, use the `Tally` channel like this:
 
 ```go
 pipeline := NewPipeline(exampleGen())
@@ -265,18 +265,18 @@ for _, result := range results {
 
 The `InParallel` utility is meant to complement the `Pipeline` pattern in the following ways:
 
-- Use `InParallel` to run a set of unique pipelines concurrently
-- Call `InParallel` from inside a slow pipeline stage to fan-out/fan-in the expensive task
+-   Use `InParallel` to run a set of unique pipelines concurrently
+-   Call `InParallel` from inside a slow pipeline stage to fan-out/fan-in the expensive task
 
 ### Misc
 
 Other async helpers in this library include:
 
-- Do your own throttling with `ThrottleBy`
-- Do your own channel forking with `TeeBy`
-- `ReadOrDone` + `WriteOrDone`
-- `IterDone` - iterate until read or done channel is closed
-- `Any` - take one from any, consolidating "done" channels
+-   Do your own throttling with `ThrottleBy`
+-   Do your own channel forking with `TeeBy`
+-   `ReadOrDone` + `WriteOrDone`
+-   `IterDone` - iterate until read or done channel is closed
+-   `Any` - take one from any, consolidating "done" channels
 
 ## Iter tools
 
@@ -308,14 +308,14 @@ value := gliter.
 
 Also...
 
-- `list.Find(func (i int) { return i%2 == 0 })`
-- `list.Len()`
-- `list.Reverse()`
-- `list.At(i)`
-- `list.FPop()`
-- `list.Slice(start, stop)`
-- `list.Delete(index)`
-- `list.Insert(index, "value")`
+-   `list.Find(func (i int) { return i%2 == 0 })`
+-   `list.Len()`
+-   `list.Reverse()`
+-   `list.At(i)`
+-   `list.FPop()`
+-   `list.Slice(start, stop)`
+-   `list.Delete(index)`
+-   `list.Insert(index, "value")`
 
 Unwrap back into slice via `list.Iter()` or `list.Unwrap()`
 

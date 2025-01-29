@@ -414,10 +414,18 @@ func TestPipelineMix(t *testing.T) {
 		},
 		// throttle 1
 		{
+			NodeID: "[Throttle]",
+			Count:  -1, // throttle doesn't keep count
+		},
+		{
 			NodeID: "2:0:0",
 			Count:  2, // 5 per branch is 10 batched by 5 is 2
 		},
 		// buffer
+		{
+			NodeID: "[Buffer]",
+			Count:  10,
+		},
 		{
 			NodeID: "4:0:0",
 			Count:  10, // 10 total items un-batched

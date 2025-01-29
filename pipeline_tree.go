@@ -7,6 +7,7 @@ import (
 // PLNode is a representation of a pipeline node for logging/insight-tracking.
 type PLNode[T any] struct {
 	id       string
+	encap    bool
 	count    uint
 	val      T
 	children []*PLNode[T]
@@ -24,21 +25,36 @@ func NewPLNodeAs[T any](id string, val T) *PLNode[T] {
 }
 
 func (n *PLNode[T]) Print() {
+	if n.encap {
+		fmt.Printf(n.id + "\n")
+		return
+	}
 	fmt.Printf("| %s | +%d | --> %v\n", n.id, n.count, n.val)
 }
 
-func (n *PLNode[T]) State() (string, uint, T) {
-	return n.id, n.count, n.val
+func (n *PLNode[T]) State() (string, int, T) {
+	if n.encap {
+		var v T
+		return n.id, -1, v
+	}
+	return n.id, int(n.count), n.val
 }
 
 func (n *PLNode[T]) StateArr() []string {
+	if n.encap {
+		return []string{n.id, fmt.Sprintf("%d", -1), "--"}
+	}
 	return []string{n.id, fmt.Sprintf("%d", n.count), fmt.Sprintf("%v", n.val)}
 }
 
 func (n *PLNode[T]) Count() PLNodeCount {
+	count := int(n.count)
+	if n.encap {
+		count = -1
+	}
 	return PLNodeCount{
 		NodeID: n.id,
-		Count:  int(n.count),
+		Count:  count,
 	}
 }
 

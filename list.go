@@ -12,7 +12,7 @@ func NewList[T any]() *Iter[T] {
 
 func MakeList[T any](size uint) *Iter[T] {
 	return &Iter[T]{
-		items: make([]T, size),
+		items: make([]T, 0, size),
 	}
 }
 
