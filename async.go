@@ -164,6 +164,9 @@ func Any(channels ...<-chan any) <-chan any {
 	return orDone
 }
 
+// IterDone combines a read and done channel for convenient iterating.
+// Iterate over the return channel knowing the loop will exit when either read or done
+// are closed.
 func IterDone[T any](read <-chan T, done <-chan any) <-chan T {
 	out := make(chan T)
 	go func() {

@@ -66,12 +66,15 @@ func TestIterDoneLong(t *testing.T) {
 
 func TestIterDoneShort(t *testing.T) {
 	done := make(chan any)
+	final := make(chan any)
 	data := make(chan int)
 	go func() {
 		defer close(data)
-		for i := range 100 {
+		for i := range 21 {
 			data <- i
 		}
+		close(done) // simulate disrupt
+		<-final     // hang so data is not closed
 	}()
 
 	results := make([]int, 100)
@@ -79,12 +82,11 @@ func TestIterDoneShort(t *testing.T) {
 
 	for i := range IterDone(data, done) {
 		results[i] = i
-		if i == 20 {
-			close(done)
-		}
-	}
+	} // can only exit due to done being closed
 	for i := range 21 {
 		expected[i] = i
 	}
 	assert.True(t, reflect.DeepEqual(expected, results))
+	// close final so goroutine can dismount and close data
+	close(final)
 }
