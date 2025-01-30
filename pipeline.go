@@ -16,9 +16,10 @@ const (
 )
 
 var (
-	ErrNoGenerator   error = errors.New("Pipeline run error. Invalid pipeline: No generator provided")
-	ErrEmptyStage    error = errors.New("Pipeline run error. Empty stage: No functions provided in stage")
-	ErrEmptyThrottle error = errors.New("Pipeline run error. Empty throttle: Throttle must be a positive value")
+	ErrNoGenerator     error = errors.New("Pipeline run error. Invalid pipeline: No generator provided")
+	ErrEmptyStage      error = errors.New("Pipeline run error. Empty stage: No functions provided in stage")
+	ErrEmptyThrottle   error = errors.New("Pipeline run error. Empty throttle: Throttle must be a positive value")
+	ErrInvalidThrottle error = errors.New("Pipeline run error. Invalid throttle: Throttle value cannot be higher than channel count.")
 )
 
 // PLConfig controls limited pipeline behavior.
@@ -28,6 +29,10 @@ type PLConfig struct {
 	LogCount    bool
 	ReturnCount bool
 	LogStep     bool
+}
+
+func (c PLConfig) keepCount() bool {
+	return c.LogAll || c.LogCount || c.LogStep || c.ReturnCount
 }
 
 type stage[T any] struct {
@@ -128,7 +133,7 @@ func (p *Pipeline[T]) handleBufferFunc(
 	outChan = make(chan T, p.buffers[index])
 	var val T
 	node = NewPLNodeAs(id, val)
-	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
+	keepCount := p.config.keepCount()
 	if stepDone != nil {
 		done = Any(done, stepDone)
 	}
@@ -177,7 +182,7 @@ func (p *Pipeline[T]) handleStageFunc(
 	outChan = make(chan T)
 	var val T
 	node = NewPLNodeAs(id, val)
-	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
+	keepCount := p.config.keepCount()
 
 	if stepDone != nil {
 		done = Any(done, stepDone)
@@ -234,7 +239,7 @@ func (p *Pipeline[T]) handleBatchFunc(
 	outChan = make(chan T)
 	var val T
 	node = NewPLNodeAs(id, val)
-	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep
+	keepCount := p.config.keepCount()
 	if stepDone != nil {
 		done = Any(done, stepDone)
 	}
@@ -312,7 +317,7 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 		stepSignal, stepDone = NewStepper(root).Run()
 		defer close(stepSignal)
 	}
-	keepCount := p.config.LogAll || p.config.LogCount || p.config.LogStep || p.config.ReturnCount
+	keepCount := p.config.keepCount()
 
 	// Init async helpers
 	done := make(chan any)
@@ -362,13 +367,32 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 		if len(stage.handlers) == 0 {
 			continue
 		}
+
+		size := prevOuts.Len() * len(stage.handlers)
+		outChans := MakeList[chan T](0, uint(size))
+		outNodes := MakeList[*PLNode[T]](0, uint(size))
+
 		if stage.stageType == THROTTLE {
+			// Invalid throttle length
+			if len(stage.handlers) > prevOuts.Len() {
+				throttleErr := make(chan error, 1)
+				throttleErr <- ErrInvalidThrottle
+				errChans.Push(throttleErr)
+				break
+			}
+			// child nodes of throttle don't exactly line up as you would expect in node tree
+			// that's ok so long as throttle size is smaller than previous stage.
+			// PLNode tree is just for logging.
 			prevOuts = SliceToList(ThrottleBy(prevOuts.Iter(), anyDone, len(stage.handlers)))
+			for i := range len(stage.handlers) {
+				node := NewPLNodeAs("[Throttle]", val)
+				node.encap = true
+				prevNodes.At(i).SpawnAs(node)
+				outNodes.Push(node)
+			}
+			prevNodes = outNodes
 			continue
 		}
-
-		outChans := List[chan T]()     // TODO optimize sizing
-		outNodes := List[*PLNode[T]]() // TODO optimize sizing
 
 		for j, po := range prevOuts.Iter() { // honor cumulative of prev forks
 			parentNode := prevNodes.At(j)
@@ -380,7 +404,7 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 				var node *PLNode[T]
 				if stage.stageType == BUFFER {
 					outChan, errChan, node = p.handleBufferFunc(
-						fmt.Sprintf("%d:%d:%d", idx, j, i),
+						"[Buffer]",
 						forkOut[i],
 						idx,
 						anyDone,

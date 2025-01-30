@@ -196,6 +196,53 @@ func TestPipelineThrottle(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(expected, actual))
 }
 
+func TestPipelineThrottleErr(t *testing.T) {
+	_, exampleEnd := makeEnd()
+	_, err := NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Throttle(3).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.Equal(t, err, ErrInvalidThrottle)
+
+	_, err = NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Throttle(4).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.Nil(t, err)
+
+	_, err = NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Throttle(5).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.Equal(t, err, ErrInvalidThrottle)
+}
+
 func TestPipelineTally(t *testing.T) {
 	_, exampleEnd := makeEnd()
 
@@ -335,6 +382,57 @@ func TestPipelineBuffer(t *testing.T) {
 		return actual[i] < actual[j]
 	})
 	assert.True(t, reflect.DeepEqual(expected, actual))
+}
+
+func TestPipelineMix(t *testing.T) {
+	_, exampleEnd := makeEnd()
+	count, err := NewPipeline(exampleGen(5)).
+		Config(PLConfig{ReturnCount: true}).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Throttle(1). // merge into 1 branch
+		Batch(5, exampleMidBatch).
+		Buffer(2).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	expected := []PLNodeCount{
+		{
+			NodeID: "GEN",
+			Count:  5, // gen 5
+		},
+		{
+			NodeID: "0:0:0",
+			Count:  5, // branch a
+		},
+		{
+			NodeID: "0:0:1",
+			Count:  5, // branch b
+		},
+		// throttle 1
+		{
+			NodeID: "[Throttle]",
+			Count:  -1, // throttle doesn't keep count
+		},
+		{
+			NodeID: "2:0:0",
+			Count:  2, // 5 per branch is 10 batched by 5 is 2
+		},
+		// buffer
+		{
+			NodeID: "[Buffer]",
+			Count:  10,
+		},
+		{
+			NodeID: "4:0:0",
+			Count:  10, // 10 total items un-batched
+		},
+	}
+	assert.Nil(t, err)
+	assert.True(t, reflect.DeepEqual(expected, count))
 }
 
 type Collect[T any] struct {

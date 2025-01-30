@@ -10,9 +10,9 @@ func NewList[T any]() *Iter[T] {
 	return &Iter[T]{}
 }
 
-func MakeList[T any](size uint) *Iter[T] {
+func MakeList[T any](length uint, capacity uint) *Iter[T] {
 	return &Iter[T]{
-		items: make([]T, size),
+		items: make([]T, length, capacity),
 	}
 }
 
