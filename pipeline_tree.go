@@ -42,7 +42,7 @@ func (n *PLNode[T]) State() (string, int, T) {
 
 func (n *PLNode[T]) StateArr() []string {
 	if n.encap {
-		return []string{n.id, fmt.Sprintf("%d", -1), "--"}
+		return []string{n.id, "--", "--"}
 	}
 	return []string{n.id, fmt.Sprintf("%d", n.count), fmt.Sprintf("%v", n.val)}
 }
