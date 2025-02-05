@@ -24,7 +24,6 @@ func ChunkBy[T any](items []T, by int) [][]T {
 		return nil
 	}
 	chunks := make([][]T, 0, int(len(items)/by))
-	// chunks = append(chunks, make([]T, 0, by))
 	chunkIndex := -1
 
 	for i, item := range items {
