@@ -13,6 +13,7 @@ const (
 	THROTTLE
 	BATCH
 	BUFFER
+	MERGE
 )
 
 var (
@@ -20,6 +21,7 @@ var (
 	ErrEmptyStage      error = errors.New("Pipeline run error. Empty stage: No functions provided in stage")
 	ErrEmptyThrottle   error = errors.New("Pipeline run error. Empty throttle: Throttle must be a positive value")
 	ErrInvalidThrottle error = errors.New("Pipeline run error. Invalid throttle: Throttle value cannot be higher than channel count.")
+	ErrNilFunc         error = errors.New("Pipeline run error. Invalid stage: Nil function.")
 )
 
 // PLConfig controls limited pipeline behavior.
@@ -51,6 +53,7 @@ type Pipeline[T any] struct {
 	generator func() (T, bool, error)
 	stages    []stage[T]
 	batches   map[int]batch[T]
+	merges    map[int]func(data []T) ([]T, error)
 	buffers   map[int]uint
 	tally     <-chan int
 	config    PLConfig
@@ -60,6 +63,7 @@ func NewPipeline[T any](gen func() (T, bool, error)) *Pipeline[T] {
 	return &Pipeline[T]{
 		batches:   map[int]batch[T]{},
 		buffers:   map[int]uint{},
+		merges:    map[int]func(data []T) ([]T, error){},
 		generator: gen,
 	}
 }
@@ -97,13 +101,21 @@ func (p *Pipeline[T]) Buffer(n uint) *Pipeline[T] {
 	return p
 }
 
-// Throttle pushes a special throttle stage onto the pipeline. A throttle stage will merge all upstream
+// Throttle pushes a special throttle stage onto the pipeline. A throttle stage will converge all upstream
 // branches into n downstream branches.
 func (p *Pipeline[T]) Throttle(n uint) *Pipeline[T] {
 	if n < 1 {
 		n = 1
 	}
 	p.stages = append(p.stages, stage[T]{stageType: THROTTLE, handlers: make([]func(data T) (T, error), n)})
+	return p
+}
+
+// Merge pushes a special merge stage onto the pipeline. A merge stage will merge all upstream
+// branches into a single downstream branch with a merge function. Output is converted back into a stream.
+func (p *Pipeline[T]) Merge(f func(data []T) ([]T, error)) *Pipeline[T] {
+	p.merges[len(p.stages)] = f
+	p.stages = append(p.stages, stage[T]{stageType: MERGE, handlers: make([]func(data T) (T, error), 1)})
 	return p
 }
 
@@ -132,6 +144,7 @@ func (p *Pipeline[T]) handleBufferFunc(
 	errChan = make(chan error)
 	outChan = make(chan T, p.buffers[index])
 	var val T
+
 	node = NewPLNodeAs(id, val)
 	keepCount := p.config.keepCount()
 	if stepDone != nil {
@@ -144,6 +157,7 @@ func (p *Pipeline[T]) handleBufferFunc(
 			close(errChan)
 			wg.Done()
 		}()
+
 		for {
 			val, ok := ReadOrDone(inChan, done)
 			if !ok {
@@ -180,6 +194,7 @@ func (p *Pipeline[T]) handleStageFunc(
 	wg.Add(1)
 	errChan = make(chan error)
 	outChan = make(chan T)
+
 	var val T
 	node = NewPLNodeAs(id, val)
 	keepCount := p.config.keepCount()
@@ -194,6 +209,12 @@ func (p *Pipeline[T]) handleStageFunc(
 			close(errChan)
 			wg.Done()
 		}()
+
+		if f == nil {
+			WriteOrDone(ErrNilFunc, errChan, done)
+			return
+		}
+
 		for {
 			if val, ok := ReadOrDone(inChan, done); ok {
 				out, err := f(val)
@@ -237,9 +258,11 @@ func (p *Pipeline[T]) handleBatchFunc(
 	wg.Add(1)
 	errChan = make(chan error)
 	outChan = make(chan T)
+
 	var val T
 	node = NewPLNodeAs(id, val)
 	keepCount := p.config.keepCount()
+
 	if stepDone != nil {
 		done = Any(done, stepDone)
 	}
@@ -279,6 +302,12 @@ func (p *Pipeline[T]) handleBatchFunc(
 			close(errChan)
 			wg.Done()
 		}()
+
+		if batch.handler == nil {
+			WriteOrDone(ErrNilFunc, errChan, done)
+			return
+		}
+
 		for {
 			if val, ok := ReadOrDone(inChan, done); ok {
 				queue = append(queue, val)
@@ -301,6 +330,90 @@ func (p *Pipeline[T]) handleBatchFunc(
 	return
 }
 
+func (p *Pipeline[T]) handleMergeFunc(
+	id string,
+	inChans []chan T,
+	index int,
+	done <-chan interface{},
+	wg *sync.WaitGroup,
+	stepSignal chan<- any,
+	stepDone <-chan any,
+) (outChan chan T, errChan chan error, node *PLNode[T]) {
+
+	wg.Add(1)
+	errChan = make(chan error)
+	outChan = make(chan T)
+
+	var val T
+
+	node = NewPLNodeAs(id, val)
+	keepCount := p.config.keepCount()
+	if stepDone != nil {
+		done = Any(done, stepDone)
+	}
+
+	mergeFunc := p.merges[index]
+	queue := make([]T, 0, len(inChans))
+
+	handleBatch := func() bool {
+		outSet, err := mergeFunc(queue)
+		if keepCount {
+			node.IncAsBatch(outSet)
+		}
+		if stepSignal != nil {
+			var T any
+			if !WriteOrDone(T, stepSignal, done) {
+				return false
+			}
+		}
+		if err != nil {
+			if WriteOrDone(err, errChan, done) {
+				return false
+			} else {
+				return false
+			}
+		}
+		for _, out := range outSet {
+			if !WriteOrDone(out, outChan, done) {
+				return false
+			}
+		}
+		return true
+	}
+
+	go func() {
+		defer func() {
+			close(outChan)
+			close(errChan)
+			wg.Done()
+		}()
+
+		if mergeFunc == nil {
+			WriteOrDone(ErrNilFunc, errChan, done)
+			return
+		}
+
+		for {
+			// read one per chan
+			for _, inChan := range inChans {
+				if val, ok := ReadOrDone(inChan, done); ok {
+					queue = append(queue, val)
+				} else {
+					queue = nil
+					return
+				}
+			}
+			if !handleBatch() {
+				return
+			}
+			queue = nil
+
+		}
+	}()
+
+	return
+}
+
 // Run builds and launches all the pipeline stages.
 func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 
@@ -313,19 +426,23 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 	root := NewPLNodeAs[T]("GEN", val)
 	var stepSignal chan<- any
 	var stepDone <-chan any
+
 	if p.config.LogStep {
 		stepSignal, stepDone = NewStepper(root).Run()
 		defer close(stepSignal)
 	}
+
 	keepCount := p.config.keepCount()
 
 	// Init async helpers
 	done := make(chan any)
 	var anyDone <-chan any
 	anyDone = done
+
 	if stepDone != nil {
 		anyDone = Any(done, stepDone)
 	}
+
 	dataChan := make(chan T)
 	errChan := make(chan error)
 	var wg sync.WaitGroup
@@ -333,15 +450,18 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 	// Init generator
 	wg.Add(1)
 	go func() {
+
 		defer func() {
 			close(errChan)
 			close(dataChan)
 			wg.Done()
 		}()
+
 		val, con, err := p.generator()
 		if err != nil {
 			WriteOrDone(err, errChan, done)
 		}
+
 		for con {
 			if keepCount {
 				root.IncAs(val)
@@ -380,31 +500,53 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 				errChans.Push(throttleErr)
 				break
 			}
+
 			// child nodes of throttle don't exactly line up as you would expect in node tree
 			// that's ok so long as throttle size is smaller than previous stage.
 			// PLNode tree is just for logging.
 			prevOuts = SliceToList(ThrottleBy(prevOuts.Iter(), anyDone, len(stage.handlers)))
 			for i := range len(stage.handlers) {
-				node := NewPLNodeAs("[Throttle]", val)
+				node := NewPLNodeAs("[THROTTLE]", val)
 				node.encap = true
 				prevNodes.At(i).SpawnAs(node)
 				outNodes.Push(node)
 			}
+
 			prevNodes = outNodes
+			continue
+		}
+
+		if stage.stageType == MERGE {
+			outChan, errChan, node := p.handleMergeFunc(
+				"[MERGE]",
+				prevOuts.Unwrap(),
+				idx,
+				anyDone,
+				&wg,
+				stepSignal,
+				stepDone,
+			)
+
+			prevNodes.At(0).SpawnAs(node)
+			errChans.Push(errChan)
+			prevOuts = List(outChan)
+			prevNodes = List(node)
 			continue
 		}
 
 		for j, po := range prevOuts.Iter() { // honor cumulative of prev forks
 			parentNode := prevNodes.At(j)
 			forkOut := TeeBy(po, anyDone, len(stage.handlers))
+
 			for i, f := range stage.handlers { // for current stage
 				// var outChan, errChan, node
 				var outChan chan T
 				var errChan chan error
 				var node *PLNode[T]
+
 				if stage.stageType == BUFFER {
 					outChan, errChan, node = p.handleBufferFunc(
-						"[Buffer]",
+						"[BUFFER]",
 						forkOut[i],
 						idx,
 						anyDone,
@@ -433,12 +575,14 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 						stepDone,
 					)
 				}
+
 				errChans.Push(errChan)
 				outChans.Push(outChan)
 				outNodes.Push(node)
 				parentNode.SpawnAs(node)
 			}
 		}
+
 		prevOuts = outChans
 		prevNodes = outNodes
 	}
@@ -476,6 +620,7 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 	// Conditional tally
 	var tallyChan chan int
 	var tallyDone chan any // tally needs to stay open until all stages exit
+
 	// if tally was created
 	if p.tally != nil {
 		tallyChan = make(chan int, 1)
@@ -497,15 +642,18 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 	// Capture, display/return results
 	tallyResult := 0
 	wg.Wait() // wait for all stages to exit
+
 	if p.tally != nil {
 		close(tallyDone)
 		tallyResult = <-tallyChan
 	}
+
 	var err error
 	select {
 	case err = <-errBuff:
 	default:
 	}
+
 	if p.config.LogAll || p.config.LogCount {
 		root.PrintFullBF()
 	}
@@ -515,5 +663,6 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 	if p.config.ReturnCount {
 		return root.CollectCount(), err
 	}
+
 	return nil, err
 }

@@ -2,8 +2,10 @@ package gliter
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -243,6 +245,103 @@ func TestPipelineThrottleErr(t *testing.T) {
 	assert.Equal(t, err, ErrInvalidThrottle)
 }
 
+func TestPipelineMerge(t *testing.T) {
+	col, exampleEnd := makeNoopEnd()
+	counts, err := NewPipeline(exampleGen(5)).
+		Config(PLConfig{ReturnCount: true}).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Stage(
+			exampleMid, // branches A.C, B.C
+			exampleMid, // branches A.D, B.D
+			exampleMid, // branches A.E, B.E
+		).
+		Merge(
+			func(data []int) ([]int, error) {
+				str := ""
+				for _, n := range data {
+					str += string([]rune(fmt.Sprintf("%d", n))[0])
+				}
+				i, err := strconv.ParseInt(str, 10, 64)
+				if err != nil {
+					return nil, err
+				}
+				return []int{int(i)}, nil
+			},
+		).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	// 1, 2, 3, 4, 5
+	// 4, 8, 12, 16, 20
+	assert.Nil(t, err)
+	expected := []int{
+		111111,
+		111111,
+		222222,
+		444444,
+		888888,
+	}
+	actual := col.items
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i] < actual[j]
+	})
+	assert.True(t, reflect.DeepEqual(expected, actual))
+	assert.Equal(t, 5, counts[len(counts)-1].Count)
+
+	// With no forking
+	col, exampleEnd = makeNoopEnd()
+	counts, err = NewPipeline(exampleGen(5)).
+		Config(PLConfig{ReturnCount: true}).
+		Stage(
+			exampleMid, // branch A
+		).
+		Merge(
+			func(items []int) ([]int, error) {
+				sum := 0
+				for _, item := range items {
+					sum += item
+				}
+				return []int{sum}, nil
+			},
+		).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+
+	expected = []int{2, 4, 6, 8, 10}
+
+	actual = col.items
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i] < actual[j]
+	})
+	assert.True(t, reflect.DeepEqual(expected, actual))
+	assert.Equal(t, 5, counts[len(counts)-1].Count)
+}
+
+func TestPipelineMergeErr(t *testing.T) {
+	_, exampleEnd := makeNoopEnd()
+	_, err := NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Merge(
+			func(data []int) ([]int, error) {
+				return nil, errors.New("Oh no")
+			},
+		).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.NotNil(t, err)
+}
+
 func TestPipelineTally(t *testing.T) {
 	_, exampleEnd := makeEnd()
 
@@ -296,6 +395,42 @@ func TestEmptyStage(t *testing.T) {
 	_, err = NewPipeline[int](nil).
 		Config(PLConfig{ReturnCount: true}).
 		Stage(exampleMid).
+		Run()
+	assert.NotNil(t, err)
+}
+
+func TestNilStage(t *testing.T) {
+	_, exampleEnd := makeEnd()
+	_, err := NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			nil,
+		).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.NotNil(t, err)
+
+	_, exampleEnd = makeEnd()
+	_, err = NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid,
+		).
+		Batch(
+			2, nil,
+		).
+		Run()
+	assert.NotNil(t, err)
+
+	_, exampleEnd = makeEnd()
+	_, err = NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid,
+		).
+		Merge(nil).
 		Run()
 	assert.NotNil(t, err)
 }
@@ -414,7 +549,7 @@ func TestPipelineMix(t *testing.T) {
 		},
 		// throttle 1
 		{
-			NodeID: "[Throttle]",
+			NodeID: "[THROTTLE]",
 			Count:  -1, // throttle doesn't keep count
 		},
 		{
@@ -423,7 +558,7 @@ func TestPipelineMix(t *testing.T) {
 		},
 		// buffer
 		{
-			NodeID: "[Buffer]",
+			NodeID: "[BUFFER]",
 			Count:  10,
 		},
 		{
@@ -526,6 +661,16 @@ func makeEnd() (*Collect[int], func(i int) (int, error)) {
 		defer col.mu.Unlock()
 		col.items = append(col.items, r)
 		return r, nil
+	}
+}
+
+func makeNoopEnd() (*Collect[int], func(i int) (int, error)) {
+	col := NewCollect[int]()
+	return col, func(i int) (int, error) {
+		col.mu.Lock()
+		defer col.mu.Unlock()
+		col.items = append(col.items, i)
+		return i, nil
 	}
 }
 

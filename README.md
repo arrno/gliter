@@ -171,6 +171,36 @@ gliter.NewPipeline(exampleGen()).
 
 gliter will handle converting the input-stream to batch and output-batch to stream for you which means batch stages are composable with normal stages.
 
+#### Merge
+
+A merge stage is like a throttle but with a transform function to handle merging records from upstream sibling branches. Once all upstream branches are ready to emit, the merge handler receives one element from each via the slice argument. The handler can emit one or more resulting records which gliter converts back into a stream.
+
+```go
+gliter.NewPipeline(exampleGen()).
+    Stage(
+        exampleMid, // branch A
+        exampleMid, // branch B
+    ).
+    Stage(
+        exampleMid, // branches A.C, B.C
+        exampleMid, // branches A.D, B.D
+        exampleMid, // branches A.E, B.E
+    ).
+    Merge(
+        func(items []int) ([]int, error) {
+            sum := 0
+            for _, item := range items {
+                sum += item
+            }
+            return []int{sum}, nil
+        },
+    ).
+    Stage(
+        exampleEnd,
+    ).
+    Run()
+```
+
 #### Buffer
 
 In certain situations, you may want to introduce a buffer before a slow/expensive stage. Doing so **will not increase the overall performance of your pipeline** but may aid in faster response signalling to an upstream caller. Add a buffer like this:
