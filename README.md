@@ -63,21 +63,27 @@ func exampleMid(i int) (int, error) {
     return i * 2, nil
 }
 
+func exampleAlt(i int) (int, error) {
+    return i * i, nil
+}
+
 func exampleEnd(i int) (int, error) {
     return i * i, nil
 }
 ```
 
-Assemble the functions into a new async pipeline with automatic branching using `NewPipeline`, `Stage`, and `Run`:
+Assemble the functions into a new async pipeline using `NewPipeline`, `Stage`, and `Run`:
 
 ```go
 gliter.NewPipeline(exampleGen()).
     Stage(
-        exampleMid, // branch A
-        exampleMid, // branch B
+        exampleMid,
     ).
     Stage(
-        exampleEnd, // Downstream of fork, exists in both branches
+        exampleAlt,
+    ).
+    Stage(
+        exampleEnd,
     ).
     Run()
 ```
@@ -90,7 +96,21 @@ Note that:
 
 ### Fork
 
-**Any time we choose to add multiple handlers in a single stage, we are forking the pipeline that many times.** When a fork occurs, all downstream stages are implicitly duplicated to exist in each stream and each transiting record is emitted on all available downstream paths doubling the number of processed records/streams.
+Stages do automatic branching like so:
+
+```go
+gliter.NewPipeline(exampleGen()).
+    Stage(
+        exampleMid, // branch A
+        exampleAlt, // branch B
+    ).
+    Stage(
+        exampleEnd, // Downstream of fork, exists in both branches
+    ).
+    Run()
+```
+
+**Any time we choose to add multiple handlers in a single stage, we are forking the pipeline that many times.** When a fork occurs, all downstream stages are implicitly duplicated to exist in each stream and each transmitted record is emitted on all available downstream paths doubling the number of processed records/streams.
 
 **If you fork a stream that processes pointers, you should clone the record in downstream branches before mutating it.**
 
@@ -123,29 +143,6 @@ Here is a visual diagram of the pipeline the code produces:
 
 ![Alt text](./diag/small-chart.png?raw=true "Title")
 
-### Batch
-
-What if one of our stages does something slow, like a DB write, that could be optimized with batching? Use a special batch stage to pool items together for bulk processing:
-
-```go
-func exampleBatch(items []int) ([]int, error) {
-    // A slow/expensive operation
-    if err := storeToDB(items); err != nil {
-        return nil, err
-    }
-    return items, nil
-}
-
-gliter.NewPipeline(exampleGen()).
-    Config(gliter.PLConfig{LogCount: true}).
-    Stage(exampleMid).
-    Batch(100, exampleBatch).
-    Stage(exampleEnd).
-    Run()
-```
-
-gliter will handle converting the input-stream to batch and output-batch to stream for you which means batch stages are composable with normal stages.
-
 ### Merge
 
 A merge stage is like a throttle but with a transform function to handle merging records from upstream sibling branches. Once all upstream branches are ready to emit, the merge handler receives one element from each via the slice argument. The handler can emit one or more resulting records which gliter converts back into a stream.
@@ -175,6 +172,29 @@ gliter.NewPipeline(exampleGen()).
     ).
     Run()
 ```
+
+### Batch
+
+What if one of our stages does something slow, like a DB write, that could be optimized with batching? Use a special batch stage to pool items together for bulk processing:
+
+```go
+func exampleBatch(items []int) ([]int, error) {
+    // A slow/expensive operation
+    if err := storeToDB(items); err != nil {
+        return nil, err
+    }
+    return items, nil
+}
+
+gliter.NewPipeline(exampleGen()).
+    Config(gliter.PLConfig{LogCount: true}).
+    Stage(exampleMid).
+    Batch(100, exampleBatch).
+    Stage(exampleEnd).
+    Run()
+```
+
+gliter will handle converting the input-stream to batch and output-batch to stream for you which means batch stages are composable with normal stages.
 
 ### Option
 
