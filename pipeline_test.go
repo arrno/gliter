@@ -342,6 +342,72 @@ func TestPipelineMergeErr(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
+func TestPipelineOption(t *testing.T) {
+	_, exampleEnd := makeNoopEnd()
+	counts, err := NewPipeline(exampleGen(5)).
+		Config(PLConfig{ReturnCount: true}).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Option(
+			func(item int) (int, error) {
+				return 1, nil
+			},
+			func(item int) (int, error) {
+				return 2, nil
+			},
+			func(item int) (int, error) {
+				return 3, nil
+			},
+		).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.Nil(t, err)
+	expectedNodeIds := []string{
+		"GEN",
+		"0:0:0",
+		"0:0:1",
+		"1:0:0",
+		"1:1:0",
+		"2:0:0",
+		"2:1:0",
+	}
+	expectedNodeCounts := []int{5, 5, 5, 5, 5, 5, 5}
+	resultNodeIds := make([]string, 7)
+	resultNodeCounts := make([]int, 7)
+	for i, count := range counts {
+		resultNodeIds[i] = count.NodeID
+		resultNodeCounts[i] = count.Count
+	}
+	assert.Equal(t, expectedNodeIds, resultNodeIds)
+	assert.Equal(t, expectedNodeCounts, resultNodeCounts)
+}
+
+func TestPipelineOptionErr(t *testing.T) {
+	_, exampleEnd := makeNoopEnd()
+	_, err := NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		Option(
+			func(data int) (int, error) {
+				return 0, errors.New("Oh no")
+			},
+			func(data int) (int, error) {
+				return 0, errors.New("Oh no")
+			},
+		).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+	assert.NotNil(t, err)
+}
+
 func TestPipelineTally(t *testing.T) {
 	_, exampleEnd := makeEnd()
 
@@ -411,6 +477,7 @@ func TestNilStage(t *testing.T) {
 		).
 		Run()
 	assert.NotNil(t, err)
+	assert.True(t, errors.Is(err, ErrNilFunc))
 
 	_, exampleEnd = makeEnd()
 	_, err = NewPipeline(exampleGen(5)).
@@ -423,6 +490,7 @@ func TestNilStage(t *testing.T) {
 		).
 		Run()
 	assert.NotNil(t, err)
+	assert.True(t, errors.Is(err, ErrNilFunc))
 
 	_, exampleEnd = makeEnd()
 	_, err = NewPipeline(exampleGen(5)).
@@ -433,6 +501,21 @@ func TestNilStage(t *testing.T) {
 		Merge(nil).
 		Run()
 	assert.NotNil(t, err)
+	assert.True(t, errors.Is(err, ErrNilFunc))
+
+	_, exampleEnd = makeEnd()
+	_, err = NewPipeline(exampleGen(5)).
+		Stage(
+			exampleMid, // branch A
+			exampleMid,
+		).
+		Option(
+			exampleMid,
+			nil,
+		).
+		Run()
+	assert.NotNil(t, err)
+	assert.True(t, errors.Is(err, ErrNilFunc))
 }
 
 func TestPipelineBatch(t *testing.T) {

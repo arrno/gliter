@@ -84,7 +84,7 @@ In the above example, because we have two functions in our first stage, the pipe
 
 > Although in the example we forked into two branches with the same func `exampleMid`, in production, you will likely fork with unique functions that each represent a distinct mutation. If you are passing a pointer through the pipeline like a slice or map, you should clone the object within each transform function that alters it.
 
-**What if I want to branch out a stage without duplicating records?** In that case, you're probably looking for the `InParallel` utility documented below and demonstrated in `./cmd/pipeline_fan_out.go`.
+**What if I want to branch out a stage without duplicating records?** In that case, check out the `Option` stage or the `InParallel` utility documented below. `InParallel` also demonstrated in `./cmd/pipeline_fan_out.go`.
 
 #### Insight
 
@@ -198,6 +198,28 @@ gliter.NewPipeline(exampleGen()).
     Stage(
         exampleEnd,
     ).
+    Run()
+```
+
+#### Option
+
+An option stage resembles a regular forking stage but **does not fork/clone pipeline streams.** Each handler is an optional route for an inbound record and only one is selected. Multiple handlers can process records concurrently which means an option stage is also effectively a buffer. **A record has an equal chance of being emitted on any handler that is available.** That means faster handlers will process more records than slower handlers.
+
+```go
+gliter.NewPipeline(exampleGen()).
+    Stage(exampleMid).
+    Option( // each record will enter one of these
+        func(item int) (int, error) {
+            return 1 + item, nil
+        },
+        func(item int) (int, error) {
+            return 2 + item, nil
+        },
+        func(item int) (int, error) {
+            return 3 + item, nil
+        },
+    ).
+    Stage(exampleEnd).
     Run()
 ```
 
