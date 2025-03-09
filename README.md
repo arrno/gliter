@@ -80,9 +80,6 @@ gliter.NewPipeline(exampleGen()).
         exampleMid,
     ).
     Stage(
-        exampleAlt,
-    ).
-    Stage(
         exampleEnd,
     ).
     Run()
