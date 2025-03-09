@@ -184,7 +184,6 @@ func exampleBatch(items []int) ([]int, error) {
 }
 
 gliter.NewPipeline(exampleGen()).
-    Config(gliter.PLConfig{LogCount: true}).
     Stage(exampleMid).
     Batch(100, exampleBatch).
     Stage(exampleEnd).
@@ -286,6 +285,21 @@ To do so, optionally set pipeline logging via one of the following modes in `pip
 -   `LogEmit` - Log every emit
 -   `LogAll` - Log emit and count
 -   `LogStep` - Interactive CLI stepper
+
+```go
+gliter.NewPipeline(exampleGen()). // with logging
+    Config(gliter.PLConfig{LogAll: true}).
+    Stage(
+        exampleMid,
+        exampleAlt,
+    ).
+    Stage(
+        exampleEnd,
+    ).
+    Run()
+```
+
+Output:
 
 ```
 Emit -> 4
