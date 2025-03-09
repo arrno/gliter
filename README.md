@@ -327,6 +327,7 @@ Throttle, buffer, and merge stages are logged a bit differently as **[THROTTLE]*
 
 ### Examples
 
+-   Get a boost with pre-built generators for common vendors in [./cmd/generators](https://github.com/arrno/gliter/blob/main/cmd/generators)
 -   For a more realistic pipeline example, see [./cmd/pipeline_example.go](https://github.com/arrno/gliter/blob/main/cmd/pipeline_example.go)
 -   For an example of composing pipeline patterns with `InParallel` AKA Fan-in/Fan-out, see [./cmd/pipeline_fan_out.go](https://github.com/arrno/gliter/blob/main/cmd/pipeline_fan_out.go)
 -   For an example with pipeline benchmarking, see [this repository](https://github.com/arrno/benchmark-gliter)
