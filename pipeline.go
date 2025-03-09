@@ -14,6 +14,7 @@ const (
 	BATCH
 	BUFFER
 	MERGE
+	OPTION
 )
 
 var (
@@ -39,32 +40,34 @@ func (c PLConfig) keepCount() bool {
 
 type stage[T any] struct {
 	stageType stageType
-	handlers  []func(data T) (T, error)
+	handlers  []func(T) (T, error)
 }
 
 type batch[T any] struct {
 	stage   int
 	size    int
-	handler func(data []T) ([]T, error)
+	handler func([]T) ([]T, error)
 }
 
 // Pipeline spawns threads for all stage functions and orchestrates channel signals between them.
 type Pipeline[T any] struct {
-	generator func() (T, bool, error)
-	stages    []stage[T]
-	batches   map[int]batch[T]
-	merges    map[int]func(data []T) ([]T, error)
-	buffers   map[int]uint
-	tally     <-chan int
-	config    PLConfig
+	generator   func() (T, bool, error)
+	stages      []stage[T]
+	batches     map[int]batch[T]
+	merges      map[int]func([]T) ([]T, error)
+	buffers     map[int]uint
+	optionForks map[int][]func(T) (T, error)
+	tally       <-chan int
+	config      PLConfig
 }
 
 func NewPipeline[T any](gen func() (T, bool, error)) *Pipeline[T] {
 	return &Pipeline[T]{
-		batches:   map[int]batch[T]{},
-		buffers:   map[int]uint{},
-		merges:    map[int]func(data []T) ([]T, error){},
-		generator: gen,
+		batches:     map[int]batch[T]{},
+		buffers:     map[int]uint{},
+		merges:      map[int]func(data []T) ([]T, error){},
+		optionForks: map[int][]func(T) (T, error){},
+		generator:   gen,
 	}
 }
 
@@ -116,6 +119,15 @@ func (p *Pipeline[T]) Throttle(n uint) *Pipeline[T] {
 func (p *Pipeline[T]) Merge(f func(data []T) ([]T, error)) *Pipeline[T] {
 	p.merges[len(p.stages)] = f
 	p.stages = append(p.stages, stage[T]{stageType: MERGE, handlers: make([]func(data T) (T, error), 1)})
+	return p
+}
+
+// Option pushes a special option stage onto the pipeline. An option stage is effectively a buffer
+// of size N where N is the number of handler functions. A record emitted from an upstream branch
+// has an equal chance of entering any one of the option functions which are ready to receive.
+func (p *Pipeline[T]) Option(fs ...func(data T) (T, error)) *Pipeline[T] {
+	p.optionForks[len(p.stages)] = fs
+	p.stages = append(p.stages, stage[T]{stageType: OPTION, handlers: make([]func(data T) (T, error), 1)})
 	return p
 }
 
@@ -218,19 +230,16 @@ func (p *Pipeline[T]) handleStageFunc(
 		for {
 			if val, ok := ReadOrDone(inChan, done); ok {
 				out, err := f(val)
+				if err != nil {
+					WriteOrDone(err, errChan, done)
+					return
+				}
 				if keepCount {
 					node.IncAs(out)
 				}
 				if stepSignal != nil {
 					var T any
 					if !WriteOrDone(T, stepSignal, done) {
-						return
-					}
-				}
-				if err != nil {
-					if WriteOrDone(err, errChan, done) {
-						return
-					} else {
 						return
 					}
 				}
@@ -272,19 +281,16 @@ func (p *Pipeline[T]) handleBatchFunc(
 
 	handleBatch := func() bool {
 		outSet, err := batch.handler(queue)
+		if err != nil {
+			WriteOrDone(err, errChan, done)
+			return false
+		}
 		if keepCount {
 			node.IncAsBatch(outSet)
 		}
 		if stepSignal != nil {
 			var T any
 			if !WriteOrDone(T, stepSignal, done) {
-				return false
-			}
-		}
-		if err != nil {
-			if WriteOrDone(err, errChan, done) {
-				return false
-			} else {
 				return false
 			}
 		}
@@ -330,6 +336,103 @@ func (p *Pipeline[T]) handleBatchFunc(
 	return
 }
 
+func (p *Pipeline[T]) handleOptionFunc(
+	id string,
+	inChan <-chan T,
+	index int,
+	done <-chan interface{},
+	wg *sync.WaitGroup,
+	stepSignal chan<- any,
+	stepDone <-chan any,
+) (outChan chan T, errChan chan error, node *PLNode[T]) {
+
+	wg.Add(1)
+	errChan = make(chan error)
+	outChan = make(chan T)
+
+	var val T
+
+	node = NewPLNodeAs(id, val)
+	keepCount := p.config.keepCount()
+	if stepDone != nil {
+		done = Any(done, stepDone)
+	}
+
+	optionFuncs := p.optionForks[index]
+
+	buffer := make(chan T, len(optionFuncs))
+	nilFunc := false
+	var workerWg sync.WaitGroup
+
+	// When all our workers exit, close downstream channels
+	go func() {
+		defer wg.Done()
+		workerWg.Wait()
+		close(outChan)
+		close(errChan)
+	}()
+
+	for _, f := range optionFuncs {
+
+		if f == nil {
+			nilFunc = true
+			break
+		}
+		workerWg.Add(1)
+
+		// worker
+		go func(handler func(T) (T, error)) {
+			defer workerWg.Done()
+			for {
+				if val, ok := ReadOrDone(buffer, done); ok {
+					result, err := handler(val)
+					if err != nil {
+						WriteOrDone(err, errChan, done)
+						return
+					}
+					if keepCount {
+						node.IncAsAtomic(result) // single node multi writers
+					}
+					if stepSignal != nil {
+						var T any
+						if !WriteOrDone(T, stepSignal, done) {
+							return
+						}
+					}
+					if !WriteOrDone(result, outChan, done) {
+						return
+					}
+				} else {
+					return
+				}
+			}
+		}(f)
+	}
+
+	go func() {
+		defer func() {
+			close(buffer)
+		}()
+
+		if nilFunc {
+			WriteOrDone(ErrNilFunc, errChan, done)
+			return
+		}
+
+		for {
+			if val, ok := ReadOrDone(inChan, done); ok {
+				if !WriteOrDone(val, buffer, done) {
+					return
+				}
+			} else {
+				return
+			}
+		}
+	}()
+
+	return
+}
+
 func (p *Pipeline[T]) handleMergeFunc(
 	id string,
 	inChans []chan T,
@@ -357,19 +460,16 @@ func (p *Pipeline[T]) handleMergeFunc(
 
 	handleBatch := func() bool {
 		outSet, err := mergeFunc(queue)
+		if err != nil {
+			WriteOrDone(err, errChan, done)
+			return false
+		}
 		if keepCount {
 			node.IncAsBatch(outSet)
 		}
 		if stepSignal != nil {
 			var T any
 			if !WriteOrDone(T, stepSignal, done) {
-				return false
-			}
-		}
-		if err != nil {
-			if WriteOrDone(err, errChan, done) {
-				return false
-			} else {
 				return false
 			}
 		}
@@ -556,6 +656,16 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 					)
 				} else if stage.stageType == BATCH {
 					outChan, errChan, node = p.handleBatchFunc(
+						fmt.Sprintf("%d:%d:%d", idx, j, i),
+						forkOut[i],
+						idx,
+						anyDone,
+						&wg,
+						stepSignal,
+						stepDone,
+					)
+				} else if stage.stageType == OPTION {
+					outChan, errChan, node = p.handleOptionFunc(
 						fmt.Sprintf("%d:%d:%d", idx, j, i),
 						forkOut[i],
 						idx,

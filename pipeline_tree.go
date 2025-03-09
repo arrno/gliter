@@ -2,10 +2,12 @@ package gliter
 
 import (
 	"fmt"
+	"sync"
 )
 
 // PLNode is a representation of a pipeline node for logging/insight-tracking.
 type PLNode[T any] struct {
+	mu       sync.Mutex
 	id       string
 	encap    bool
 	count    uint
@@ -135,6 +137,13 @@ func (n *PLNode[T]) Inc() {
 }
 
 func (n *PLNode[T]) IncAs(val T) {
+	n.val = val
+	n.count++
+}
+
+func (n *PLNode[T]) IncAsAtomic(val T) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	n.val = val
 	n.count++
 }
