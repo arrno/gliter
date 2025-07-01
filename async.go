@@ -181,3 +181,25 @@ func IterDone[T any](read <-chan T, done <-chan any) <-chan T {
 	}()
 	return out
 }
+
+// Multiplex merges any number of read channels into one consolidated read-only stream
+func Multiplex[T any](inbound ...<-chan T) <-chan T {
+	out := make(chan T)
+	var wg sync.WaitGroup
+
+	for _, ch := range inbound {
+		wg.Add(1)
+		go func(ch <-chan T) {
+			defer wg.Done()
+			for val := range ch {
+				out <- val
+			}
+		}(ch)
+	}
+
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+	return out
+}
