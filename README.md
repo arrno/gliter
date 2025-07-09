@@ -366,6 +366,8 @@ for _, result := range results {
 }
 ```
 
+-   There is also a throttled InParallel function defined as `InParallelThrottle[T any](throttle int, funcs []func() (T, error)) ([]T, error)` which uses a token bucket to constrain max concurrent threads.
+
 ## Misc
 
 Other async helpers in this library include:

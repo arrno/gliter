@@ -32,6 +32,50 @@ func InParallel[T any](funcs []func() (T, error)) ([]T, error) {
 	return results, nil
 }
 
+// InParallel runs all the functions asynchronously and returns the results in order or the first error.
+func InParallelThrottle[T any](throttle int, funcs []func() (T, error)) ([]T, error) {
+
+	if throttle <= 0 {
+		return InParallel(funcs)
+	}
+
+	type orderedResult struct {
+		result T
+		order  int
+	}
+
+	tokens := NewTokenBucket(throttle)
+
+	dataChan := make(chan orderedResult, len(funcs))
+	errChan := make(chan error, len(funcs))
+	for i, f := range funcs {
+		go func(order int) {
+
+			tokens.Take()
+			defer tokens.Push()
+
+			result, err := f()
+			if err != nil {
+				errChan <- err
+			} else {
+				dataChan <- orderedResult{result, order}
+			}
+		}(i)
+	}
+
+	results := make([]T, len(funcs))
+
+	for range len(funcs) {
+		select {
+		case err := <-errChan:
+			return nil, err
+		case res := <-dataChan:
+			results[res.order] = res.result
+		}
+	}
+	return results, nil
+}
+
 // ThrottleBy merges the output of the provided channels into n output channels.
 // This function returns when 'in' channels are closed or signal is received on 'done'.
 func ThrottleBy[T any](in []chan T, done <-chan interface{}, n int) (out []chan T) {
@@ -202,4 +246,28 @@ func Multiplex[T any](inbound ...<-chan T) <-chan T {
 		close(out)
 	}()
 	return out
+}
+
+type TokenBucket struct {
+	size   int
+	tokens chan struct{}
+}
+
+func (t *TokenBucket) Take() {
+	<-t.tokens
+}
+
+func (t *TokenBucket) Push() {
+	t.tokens <- struct{}{}
+}
+
+func NewTokenBucket(size int) *TokenBucket {
+	tb := TokenBucket{
+		size:   size,
+		tokens: make(chan struct{}, size),
+	}
+	for _ = range size {
+		tb.tokens <- struct{}{}
+	}
+	return &tb
 }
