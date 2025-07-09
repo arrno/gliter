@@ -377,6 +377,7 @@ Other async helpers in this library include:
 -   `ReadOrDone` + `WriteOrDone`
 -   `IterDone` - iterate until read or done channel is closed
 -   `Any` - take one from any, consolidating "done" channels
+-   `Multiplex` - merge multiple read streams into one read stream
 
 Also included are some synchronous iter tools that may be helpful:
 

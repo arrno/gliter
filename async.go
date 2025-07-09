@@ -32,7 +32,8 @@ func InParallel[T any](funcs []func() (T, error)) ([]T, error) {
 	return results, nil
 }
 
-// InParallel runs all the functions asynchronously and returns the results in order or the first error.
+// InParallelThrottle runs all the functions asynchronously and returns the results in order or the first error.
+// No more than `throttle` threads will be active at any given time.
 func InParallelThrottle[T any](throttle int, funcs []func() (T, error)) ([]T, error) {
 
 	if throttle <= 0 {
@@ -50,7 +51,6 @@ func InParallelThrottle[T any](throttle int, funcs []func() (T, error)) ([]T, er
 	errChan := make(chan error, len(funcs))
 	for i, f := range funcs {
 		go func(order int) {
-
 			tokens.Take()
 			defer tokens.Push()
 
