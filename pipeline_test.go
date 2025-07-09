@@ -313,6 +313,7 @@ func TestPipelineMerge(t *testing.T) {
 		).
 		Run()
 
+	assert.Nil(t, err)
 	expected = []int{2, 4, 6, 8, 10}
 
 	actual = col.items
@@ -479,7 +480,6 @@ func TestNilStage(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.True(t, errors.Is(err, ErrNilFunc))
 
-	_, exampleEnd = makeEnd()
 	_, err = NewPipeline(exampleGen(5)).
 		Stage(
 			exampleMid, // branch A
@@ -492,7 +492,6 @@ func TestNilStage(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.True(t, errors.Is(err, ErrNilFunc))
 
-	_, exampleEnd = makeEnd()
 	_, err = NewPipeline(exampleGen(5)).
 		Stage(
 			exampleMid, // branch A
@@ -503,7 +502,6 @@ func TestNilStage(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.True(t, errors.Is(err, ErrNilFunc))
 
-	_, exampleEnd = makeEnd()
 	_, err = NewPipeline(exampleGen(5)).
 		Stage(
 			exampleMid, // branch A

@@ -21,8 +21,8 @@ var (
 	ErrNoGenerator     error = errors.New("Pipeline run error. Invalid pipeline: No generator provided")
 	ErrEmptyStage      error = errors.New("Pipeline run error. Empty stage: No functions provided in stage")
 	ErrEmptyThrottle   error = errors.New("Pipeline run error. Empty throttle: Throttle must be a positive value")
-	ErrInvalidThrottle error = errors.New("Pipeline run error. Invalid throttle: Throttle value cannot be higher than channel count.")
-	ErrNilFunc         error = errors.New("Pipeline run error. Invalid stage: Nil function.")
+	ErrInvalidThrottle error = errors.New("Pipeline run error. Invalid throttle: Throttle value cannot be higher than channel count")
+	ErrNilFunc         error = errors.New("Pipeline run error. Invalid stage: Nil function")
 )
 
 // PLConfig controls limited pipeline behavior.

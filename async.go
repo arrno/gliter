@@ -266,7 +266,7 @@ func NewTokenBucket(size int) *TokenBucket {
 		size:   size,
 		tokens: make(chan struct{}, size),
 	}
-	for _ = range size {
+	for range size {
 		tb.tokens <- struct{}{}
 	}
 	return &tb
