@@ -333,7 +333,7 @@ func TestPipelineMergeErr(t *testing.T) {
 		).
 		Merge(
 			func(data []int) ([]int, error) {
-				return nil, errors.New("Oh no")
+				return nil, errors.New("oh no")
 			},
 		).
 		Stage(
@@ -396,10 +396,10 @@ func TestPipelineOptionErr(t *testing.T) {
 		).
 		Option(
 			func(data int) (int, error) {
-				return 0, errors.New("Oh no")
+				return 0, errors.New("oh no")
 			},
 			func(data int) (int, error) {
-				return 0, errors.New("Oh no")
+				return 0, errors.New("oh no")
 			},
 		).
 		Stage(
