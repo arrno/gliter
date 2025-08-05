@@ -7,9 +7,9 @@ import (
 )
 
 var (
-	ErrInvalidOperationNotRunning error = errors.New("broker invalid operation error: broker is not running")
-	ErrInvalidOperationRunning    error = errors.New("broker invalid operation error: broker is running")
-	ErrInvalidOperationHasRun     error = errors.New("broker invalid operation error: broker has already run")
+	ErrInvalidOperationNotRunning error = errors.New("workerPool invalid operation error: workerPool is not running")
+	ErrInvalidOperationRunning    error = errors.New("workerPool invalid operation error: workerPool is running")
+	ErrInvalidOperationHasRun     error = errors.New("workerPool invalid operation error: workerPool has already run")
 )
 
 const DEFAULt_BUFF_SIZE = 100
