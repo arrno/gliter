@@ -12,7 +12,7 @@ var (
 	ErrInvalidOperationHasRun     error = errors.New("workerPool invalid operation error: workerPool has already run")
 )
 
-const DEFAULt_BUFF_SIZE = 100
+const DEFAULT_BUFF_SIZE = 100
 
 type WorkerPool[T, R any] struct {
 	mu           sync.Mutex
@@ -30,18 +30,17 @@ type WorkerPool[T, R any] struct {
 }
 
 func NewWorkerPool[T, R any](ctx context.Context, size int, handler func(val T) (R, error)) *WorkerPool[T, R] {
-	var wg sync.WaitGroup
-	wg.Add(1)
-	return &WorkerPool[T, R]{
+	wp := WorkerPool[T, R]{
 		size:         size,
 		queue:        make(chan T, size),
-		bufferSize:   DEFAULt_BUFF_SIZE,
-		resultBuffer: make(chan R, DEFAULt_BUFF_SIZE),
+		bufferSize:   DEFAULT_BUFF_SIZE,
+		resultBuffer: make(chan R, DEFAULT_BUFF_SIZE),
 		results:      make([]R, 0, size),
 		handler:      handler,
-		wg:           wg,
 		ctx:          ctx,
 	}
+	wp.wg.Add(1)
+	return &wp
 }
 
 func (b *WorkerPool[T, R]) WithBuffSize(buffSize int) error {
