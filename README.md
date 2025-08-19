@@ -368,6 +368,61 @@ for _, result := range results {
 
 -   There is also a throttled InParallel function defined as `InParallelThrottle[T any](throttle int, funcs []func() (T, error)) ([]T, error)` which uses a token bucket to constrain max concurrent threads.
 
+## Worker Pool
+
+A generic worker pool. The lifecycle of a worker pool is as follows:
+
+-   Start
+    -   Construct
+    -   Boot
+-   Run
+    -   Push -> Take/Drain -> Repeat
+-   Stop
+    -   Close/Wait
+    -   Take/Drain
+
+```go
+// - START -
+handler := func(val int) (string, error) {
+    return fmt.Sprintf("Got %d", val), nil
+}
+
+b := NewWorkerPool(context.Background(), 3, handler)
+
+b.Boot() // spawn workers
+
+// - RUN -
+for range 10 {
+    err := b.Push(0, 1, 2, 3)
+    if err != nil {
+        panic(err)
+    }
+    // periodically check/drain worker state
+    if b.IsErr() {
+        errors := b.TakeErrors()
+        panic(errors[0])
+    } else {
+        results := b.TakeResults()
+        fmt.Println(results)
+    }
+}
+
+// - CLOSE -
+err := b.Close() // waits for remaining work to complete
+if err != nil {
+    panic(err)
+}
+
+// handle results
+if b.IsErr() {
+    errors := b.TakeErrors()
+    panic(errors[0])
+} else {
+    results := b.TakeResults()
+    fmt.Println(results)
+}
+```
+
 ## Misc
 
 Other async helpers in this library include:
