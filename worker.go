@@ -26,12 +26,13 @@ type WorkerPool[T, R any] struct {
 }
 
 func NewWorkerPool[T, R any](size int, handler func(val T) (R, error)) *WorkerPool[T, R] {
+	buffSize := size * 2
 	wp := WorkerPool[T, R]{
 		size:         size,
-		queue:        make(chan T, size),
-		bufferSize:   size,
-		resultBuffer: make(chan R, size),
-		results:      make([]R, 0, size),
+		queue:        make(chan T, buffSize),
+		bufferSize:   buffSize,
+		resultBuffer: make(chan R, buffSize),
+		results:      make([]R, 0, buffSize),
 		handler:      handler,
 	}
 	wp.wg.Add(1)
