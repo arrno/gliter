@@ -27,14 +27,18 @@ func NewPLNodeAs[T any](id string, val T) *PLNode[T] {
 }
 
 func (n *PLNode[T]) Print() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	if n.encap {
-		fmt.Printf(n.id + "\n")
+		fmt.Printf("%s\n", n.id)
 		return
 	}
 	fmt.Printf("| %s | +%d | --> %v\n", n.id, n.count, n.val)
 }
 
 func (n *PLNode[T]) State() (string, int, T) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	if n.encap {
 		var v T
 		return n.id, -1, v
@@ -43,6 +47,8 @@ func (n *PLNode[T]) State() (string, int, T) {
 }
 
 func (n *PLNode[T]) StateArr() []string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	if n.encap {
 		return []string{n.id, "--", "--"}
 	}
@@ -50,6 +56,8 @@ func (n *PLNode[T]) StateArr() []string {
 }
 
 func (n *PLNode[T]) Count() PLNodeCount {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	count := int(n.count)
 	if n.encap {
 		count = -1
@@ -78,9 +86,13 @@ func (n *PLNode[T]) PrintFullBF() {
 			dimensions[i] = min(max(dimensions[i], len(state[i])), MAX_PAD)
 		}
 		results = append(results, state)
+
+		next.mu.Lock()
 		for _, child := range next.children {
 			q.Push(child)
 		}
+		next.mu.Unlock()
+
 		collect()
 	}
 	q.Push(n)
@@ -118,9 +130,13 @@ func (n *PLNode[T]) CollectCount() []PLNodeCount {
 		}
 		next := q.FPop()
 		results = append(results, next.Count())
+
+		next.mu.Lock()
 		for _, child := range next.children {
 			q.Push(child)
 		}
+		next.mu.Unlock()
+
 		collect()
 	}
 	q.Push(n)
@@ -129,19 +145,18 @@ func (n *PLNode[T]) CollectCount() []PLNodeCount {
 }
 
 func (n *PLNode[T]) Set(val T) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	n.val = val
 }
 
 func (n *PLNode[T]) Inc() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	n.count++
 }
 
 func (n *PLNode[T]) IncAs(val T) {
-	n.val = val
-	n.count++
-}
-
-func (n *PLNode[T]) IncAsAtomic(val T) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.val = val
@@ -149,6 +164,8 @@ func (n *PLNode[T]) IncAsAtomic(val T) {
 }
 
 func (n *PLNode[T]) IncAsBatch(val []T) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	if len(val) > 0 {
 		n.val = val[len(val)-1]
 	}
@@ -156,12 +173,16 @@ func (n *PLNode[T]) IncAsBatch(val []T) {
 }
 
 func (n *PLNode[T]) Spawn() *PLNode[T] {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	child := NewPLNode[T]()
 	n.children = append(n.children, child)
 	return child
 }
 
 func (n *PLNode[T]) SpawnAs(child *PLNode[T]) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	n.children = append(n.children, child)
 }
 

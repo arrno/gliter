@@ -391,7 +391,7 @@ func (p *Pipeline[T]) handleOptionFunc(
 						return
 					}
 					if keepCount {
-						node.IncAsAtomic(result) // single node multi writers
+						node.IncAs(result) // single node multi writers
 					}
 					if stepSignal != nil {
 						var T any
@@ -560,6 +560,7 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 		val, con, err := p.generator()
 		if err != nil {
 			WriteOrDone(err, errChan, done)
+			return
 		}
 
 		for con {
@@ -570,6 +571,7 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 				val, con, err = p.generator()
 				if err != nil {
 					WriteOrDone(err, errChan, done)
+					return
 				}
 			} else {
 				return
