@@ -379,6 +379,8 @@ results, errors := gliter.NewWorkerPool(3, handler).
     Collect()
 ```
 
+More examples in `./cmd/worker_pool_example.go`
+
 ## Misc
 
 Other async helpers in this library include:
