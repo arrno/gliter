@@ -370,57 +370,13 @@ for _, result := range results {
 
 ## Worker Pool
 
-A generic worker pool. The lifecycle of a worker pool is as follows:
-
--   Start
-    -   Construct
-    -   Boot
--   Run
-    -   Push -> Take/Drain -> Repeat
--   Stop
-    -   Close/Wait
-    -   Take/Drain
+A generic worker pool. You can do worker pools in one line like this or you can keep them running with periodic work pushing and result collecting.
 
 ```go
-// - START -
-handler := func(val int) (string, error) {
-    return fmt.Sprintf("Got %d", val), nil
-}
-
-b := NewWorkerPool(3, handler)
-
-b.Boot() // spawn workers
-
-// - RUN -
-for range 10 {
-    err := b.Push(0, 1, 2, 3)
-    if err != nil {
-        panic(err)
-    }
-    // periodically check/drain worker state
-    if b.IsErr() {
-        errors := b.TakeErrors()
-        panic(errors[0])
-    } else {
-        results := b.TakeResults()
-        fmt.Println(results)
-    }
-}
-
-// - CLOSE -
-err := b.Close() // waits for remaining work to complete
-if err != nil {
-    panic(err)
-}
-
-// handle results
-if b.IsErr() {
-    errors := b.TakeErrors()
-    panic(errors[0])
-} else {
-    results := b.TakeResults()
-    fmt.Println(results)
-}
+results, errors := gliter.NewWorkerPool(3, handler).
+    Push(0, 1, 2, 3, 4).
+    Close().
+    Collect()
 ```
 
 ## Misc

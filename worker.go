@@ -11,8 +11,6 @@ var (
 	ErrInvalidOperationHasRun     error = errors.New("workerPool invalid operation error: workerPool has already run")
 )
 
-const DEFAULT_BUFF_SIZE = 100
-
 type WorkerPool[T, R any] struct {
 	mu           sync.Mutex
 	size         int
@@ -31,29 +29,20 @@ func NewWorkerPool[T, R any](size int, handler func(val T) (R, error)) *WorkerPo
 	wp := WorkerPool[T, R]{
 		size:         size,
 		queue:        make(chan T, size),
-		bufferSize:   DEFAULT_BUFF_SIZE,
-		resultBuffer: make(chan R, DEFAULT_BUFF_SIZE),
+		bufferSize:   size,
+		resultBuffer: make(chan R, size),
 		results:      make([]R, 0, size),
 		handler:      handler,
 	}
 	wp.wg.Add(1)
-	return &wp
+	return wp.boot()
 }
 
-func (b *WorkerPool[T, R]) WithBuffSize(buffSize int) error {
-	if b.hasRun {
-		return ErrInvalidOperationHasRun
-	}
-	b.bufferSize = buffSize
-	b.resultBuffer = make(chan R, buffSize)
-	return nil
-}
-
-func (b *WorkerPool[T, R]) Boot() {
+func (b *WorkerPool[T, R]) boot() *WorkerPool[T, R] {
 	b.mu.Lock()
 	if b.running || b.hasRun {
 		b.mu.Unlock()
-		return
+		return b
 	}
 	b.hasRun = true
 	b.running = true
@@ -100,33 +89,35 @@ func (b *WorkerPool[T, R]) Boot() {
 		b.wg.Done()
 	}()
 
+	return b
 }
 
-func (b *WorkerPool[T, R]) Push(items ...T) error {
+func (b *WorkerPool[T, R]) Push(items ...T) *WorkerPool[T, R] {
 	b.mu.Lock()
 	if !b.running {
+		b.errors = append(b.errors, ErrInvalidOperationNotRunning)
 		b.mu.Unlock()
-		return ErrInvalidOperationNotRunning
+		return b
 	}
 	b.mu.Unlock()
 	for _, item := range items {
 		b.queue <- item
 	}
-	return nil
+	return b
 }
 
-func (b *WorkerPool[T, R]) Close() error {
+func (b *WorkerPool[T, R]) Close() *WorkerPool[T, R] {
 	b.mu.Lock()
 	if !b.running {
 		b.mu.Unlock()
-		return ErrInvalidOperationNotRunning
+		return b
 	}
 	b.running = false
 	b.mu.Unlock()
 
 	close(b.queue)
 	b.wg.Wait()
-	return nil
+	return b
 }
 
 func (b *WorkerPool[T, R]) IsErr() bool {
@@ -148,5 +139,15 @@ func (b *WorkerPool[T, R]) TakeResults() (results []R) {
 	defer b.mu.Unlock()
 	results = b.results
 	b.results = nil
+	return
+}
+
+func (b *WorkerPool[T, R]) Collect() (results []R, errors []error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	results = b.results
+	errors = b.errors
+	b.results = nil
+	b.errors = nil
 	return
 }
