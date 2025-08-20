@@ -1,7 +1,6 @@
 package gliter
 
 import (
-	"context"
 	"errors"
 	"sync"
 )
@@ -23,13 +22,12 @@ type WorkerPool[T, R any] struct {
 	handler      func(val T) (R, error)
 	running      bool
 	hasRun       bool
-	ctx          context.Context
 	results      []R
 	wg           sync.WaitGroup
 	errors       []error
 }
 
-func NewWorkerPool[T, R any](ctx context.Context, size int, handler func(val T) (R, error)) *WorkerPool[T, R] {
+func NewWorkerPool[T, R any](size int, handler func(val T) (R, error)) *WorkerPool[T, R] {
 	wp := WorkerPool[T, R]{
 		size:         size,
 		queue:        make(chan T, size),
@@ -37,7 +35,6 @@ func NewWorkerPool[T, R any](ctx context.Context, size int, handler func(val T) 
 		resultBuffer: make(chan R, DEFAULT_BUFF_SIZE),
 		results:      make([]R, 0, size),
 		handler:      handler,
-		ctx:          ctx,
 	}
 	wp.wg.Add(1)
 	return &wp
@@ -53,9 +50,14 @@ func (b *WorkerPool[T, R]) WithBuffSize(buffSize int) error {
 }
 
 func (b *WorkerPool[T, R]) Boot() {
+	b.mu.Lock()
 	if b.running || b.hasRun {
+		b.mu.Unlock()
 		return
 	}
+	b.hasRun = true
+	b.running = true
+	b.mu.Unlock()
 
 	var wg sync.WaitGroup
 
@@ -98,14 +100,15 @@ func (b *WorkerPool[T, R]) Boot() {
 		b.wg.Done()
 	}()
 
-	b.hasRun = true
-	b.running = true
 }
 
 func (b *WorkerPool[T, R]) Push(items ...T) error {
+	b.mu.Lock()
 	if !b.running {
+		b.mu.Unlock()
 		return ErrInvalidOperationNotRunning
 	}
+	b.mu.Unlock()
 	for _, item := range items {
 		b.queue <- item
 	}
@@ -113,17 +116,22 @@ func (b *WorkerPool[T, R]) Push(items ...T) error {
 }
 
 func (b *WorkerPool[T, R]) Close() error {
+	b.mu.Lock()
 	if !b.running {
+		b.mu.Unlock()
 		return ErrInvalidOperationNotRunning
 	}
-
 	b.running = false
+	b.mu.Unlock()
+
 	close(b.queue)
 	b.wg.Wait()
 	return nil
 }
 
 func (b *WorkerPool[T, R]) IsErr() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	return len(b.errors) > 0
 }
 

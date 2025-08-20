@@ -387,7 +387,7 @@ handler := func(val int) (string, error) {
     return fmt.Sprintf("Got %d", val), nil
 }
 
-b := NewWorkerPool(context.Background(), 3, handler)
+b := NewWorkerPool(3, handler)
 
 b.Boot() // spawn workers
 

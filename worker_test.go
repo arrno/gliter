@@ -1,7 +1,6 @@
 package gliter
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -10,7 +9,7 @@ import (
 )
 
 func TestWorker(t *testing.T) {
-	b := NewWorkerPool(context.Background(), 3, func(val int) (string, error) {
+	b := NewWorkerPool(3, func(val int) (string, error) {
 		return fmt.Sprintf("Got %d", val), nil
 	})
 
@@ -37,7 +36,7 @@ func TestWorker(t *testing.T) {
 }
 
 func TestWorkerErrors(t *testing.T) {
-	b := NewWorkerPool(context.Background(), 3, func(val int) (string, error) {
+	b := NewWorkerPool(3, func(val int) (string, error) {
 		return "", errors.New("oh no")
 	})
 
