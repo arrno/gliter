@@ -50,8 +50,8 @@ func InParallelThrottle[T any](throttle int, funcs []func() (T, error)) ([]T, er
 	dataChan := make(chan orderedResult, len(funcs))
 	errChan := make(chan error, len(funcs))
 	for i, f := range funcs {
+		tokens.Take()
 		go func(order int) {
-			tokens.Take()
 			defer tokens.Push()
 
 			result, err := f()
