@@ -84,7 +84,8 @@ func TestPipelineCancel(t *testing.T) {
 
 	assert.Equal(t, err, ErrContextCanceled)
 
-	ctx, _ = context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ctx, cancel = context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
 
 	_, err = NewPipeline(infiniteGen()).
 		WithContext(ctx).
