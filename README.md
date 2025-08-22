@@ -1,13 +1,18 @@
 # Gliter ✨
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/arrno/gliter.svg)](https://pkg.go.dev/github.com/arrno/gliter)
+[![Go Reference](https://pkg.go.dev/badge/github.com/arrno/gliter.svg)](https://pkg.go.dev/github.com/arrno/gliter)  
 [![Go Build](https://github.com/arrno/gliter/actions/workflows/go.yml/badge.svg)](https://github.com/arrno/gliter/actions/workflows/go.yml)
 
-**Go lang iter tools! ʕ◔ϖ◔ʔ**
+> **Composable async & concurrency patterns for Go.**  
+> Write pipelines, worker pools, and async utilities without worrying about race conditions, deadlocks, or goroutine leaks.  
 
-Download:
+---
 
-```
+## Quick Start
+
+Install:
+
+```bash
 go get github.com/arrno/gliter
 ```
 
@@ -17,83 +22,68 @@ Import:
 import "github.com/arrno/gliter"
 ```
 
-> The mission of this project is to make it easy to compose normal business logic into complex async patterns. Ideally, we should spend most our mental energy solving our core problems instead of worrying about race conditions, deadlocks, channel states, and go-routine leaks. The patterns published here are all intended to serve that goal.
+---
 
-## Pipelines
+## Table of Contents
 
-Orchestrate a series of functions into a branching async pipeline with the Pipeline type.
+- [Overview](#overview)  
+- [Pipeline](#pipeline)  
+  - [Fork](#fork)  
+  - [Throttle](#throttle)  
+  - [Merge](#merge)  
+  - [Batch](#batch)  
+  - [Option](#option)  
+  - [Buffer](#buffer)  
+  - [Tally](#tally)  
+  - [Insight](#insight)  
+- [InParallel](#inparallel)  
+- [Worker Pool](#worker-pool)  
+- [Misc Utilities](#misc-utilities)  
+- [Examples](#examples)  
+- [Contributing](#contributing)  
+
+---
+
+## Overview
+
+Gliter makes it easy to assemble **normal business logic** into **complex async flows**.  
+
+Instead of spending time debugging goroutines, channels, or leaks, you define your data flow declaratively and let Gliter handle the concurrency patterns.  
+
+---
+
+## Pipeline
+
+Compose stages of functions into a branching async pipeline:
 
 ```go
 gliter.NewPipeline(streamTransactionsFromKafka).
     Stage(
-        preprocessFeatures, // Normalize, extract relevant fields
+        preprocessFeatures,
     ).
     Stage(
-        runFraudModel, // Model inference on transactions
-        checkBusinessRules, // Non-ML heuristic checks
+        runFraudModel,
+        checkBusinessRules,
     ).
-    Merge(
-        aggregateResults, // Combine outputs from ML & rules
-    ).
+    Merge(aggregateResults).
     Stage(
-        sendToAlertSystem, // Notify if fraud detected
-        storeInDatabase,   // Log for later analysis
+        sendToAlertSystem,
+        storeInDatabase,
     ).
     Run()
 ```
 
-### Example
+Key properties:
 
-Start with a generator function and some simple transformers:
+- Data always flows downstream from the generator through each stage.  
+- Side effects (DB writes, API calls, etc.) belong inside stage functions.  
+- Errors short-circuit the pipeline automatically.  
 
-```go
-func exampleGen() func() (int, bool, error) {
-    data := []int{1, 2, 3, 4, 5}
-    index := -1
-    return func() (int, bool, error) {
-        index++
-        if index == len(data) {
-            return 0, false, nil
-        }
-        return data[index], true, nil
-    }
-}
-
-func exampleMid(i int) (int, error) {
-    return i * 2, nil
-}
-
-func exampleAlt(i int) (int, error) {
-    return i * i, nil
-}
-
-func exampleEnd(i int) (int, error) {
-    return i * i, nil
-}
-```
-
-Assemble the functions into a new async pipeline using `NewPipeline`, `Stage`, and `Run`:
-
-```go
-gliter.NewPipeline(exampleGen()).
-    Stage(
-        exampleMid,
-    ).
-    Stage(
-        exampleEnd,
-    ).
-    Run()
-```
-
-Note that:
-
--   Data always flows downstream from generator through stages sequentially.
--   There is no distinct end stage. Any side-effects/outputs like db writes or API posts should be handled inside a Stage function wherever appropriate.
--   Any error encountered at any stage will short-circuit the pipeline.
+---
 
 ### Fork
 
-Stages do automatic branching like so:
+Add multiple handlers in one stage to fork the pipeline:
 
 ```go
 gliter.NewPipeline(exampleGen()).
@@ -101,82 +91,58 @@ gliter.NewPipeline(exampleGen()).
         exampleMid, // branch A
         exampleAlt, // branch B
     ).
-    Stage(
-        exampleEnd, // Downstream of fork, exists in both branches
-    ).
+    Stage(exampleEnd).
     Run()
 ```
 
-**Any time we choose to add multiple handlers in a single stage, we are forking the pipeline that many times.** When a fork occurs, all downstream stages are implicitly duplicated to exist in each stream and each transmitted record is emitted on all available downstream paths doubling the number of processed records/streams.
+👉 Each downstream stage is duplicated for each branch.  
+⚠️ If processing pointers, clone before mutating downstream.  
 
-**If you fork a stream that processes pointers, you should clone the record in downstream branches before mutating it.**
+For branching without duplicating streams, use [`Option`](#option) or [`InParallel`](#inparallel).  
 
-**What if I want to branch out a stage without duplicating records/streams?** In that case, check out the **Option** stage or the **InParallel** utility documented below. InParallel also demonstrated in `./cmd/pipeline_fan_out.go`.
+---
 
 ### Throttle
 
-What if our end stage results in a high number of concurrent output streams that overwhelms a destination DB or API? Use the throttle stage to rein in concurrent streams like this:
+Control concurrency when downstream stages overwhelm your DB or API:
 
 ```go
-// With concurrency throttling
 gliter.NewPipeline(exampleGen()).
-    Stage(
-        exampleMid, // branch A
-        exampleMid, // branch B
-    ).
-    Stage(
-        exampleMid, // branches A.C, B.C
-        exampleMid, // branches A.D, B.D
-        exampleMid, // branches A.E, B.E
-    ).
-    Throttle(2). // throttle into branches X, Z
-    Stage(
-        exampleEnd,
-    ).
+    Stage(exampleMid, exampleMid).
+    Stage(exampleMid, exampleMid, exampleMid).
+    Throttle(2).
+    Stage(exampleEnd).
     Run()
 ```
 
-Here is a visual diagram of the pipeline the code produces:
-
-![Alt text](./diag/small-chart.png?raw=true "Title")
+---
 
 ### Merge
 
-A merge stage is like a throttle but with a transform function to handle merging records from upstream sibling branches. Once all upstream branches are ready to emit, the merge handler receives one element from each via the slice argument. The handler can emit one or more resulting records which gliter converts back into a stream.
+Combine multiple branches into one:
 
 ```go
 gliter.NewPipeline(exampleGen()).
-    Stage(
-        exampleMid, // branch A
-        exampleMid, // branch B
-    ).
-    Stage(
-        exampleMid, // branches A.C, B.C
-        exampleMid, // branches A.D, B.D
-        exampleMid, // branches A.E, B.E
-    ).
-    Merge( // merges into branch Z
-        func(items []int) ([]int, error) {
-            sum := 0
-            for _, item := range items {
-                sum += item
-            }
-            return []int{sum}, nil
-        },
-    ).
-    Stage(
-        exampleEnd,
-    ).
+    Stage(exampleMid, exampleMid).
+    Merge(func(items []int) ([]int, error) {
+        sum := 0
+        for _, item := range items {
+            sum += item
+        }
+        return []int{sum}, nil
+    }).
+    Stage(exampleEnd).
     Run()
 ```
 
+---
+
 ### Batch
 
-What if one of our stages does something slow, like a DB write, that could be optimized with batching? Use a special batch stage to pool items together for bulk processing:
+Batch records for bulk operations:
 
 ```go
 func exampleBatch(items []int) ([]int, error) {
-    // A slow/expensive operation
     if err := storeToDB(items); err != nil {
         return nil, err
     }
@@ -190,33 +156,29 @@ gliter.NewPipeline(exampleGen()).
     Run()
 ```
 
-gliter will handle converting the input-stream to batch and output-batch to stream for you which means batch stages are composable with normal stages.
+---
 
 ### Option
 
-An option stage resembles a regular forking stage but **does not fork/clone pipeline streams.** Each handler is an optional route for an inbound record and only one is selected. Multiple handlers can process records concurrently which means an option stage is also effectively a buffer. **A record has an equal chance of being emitted on any handler that is available.** That means faster handlers will process more records than slower handlers.
+Route each record to exactly one handler (no cloning):
 
 ```go
 gliter.NewPipeline(exampleGen()).
     Stage(exampleMid).
-    Option( // each record will enter one of these
-        func(item int) (int, error) {
-            return 1 + item, nil
-        },
-        func(item int) (int, error) {
-            return 2 + item, nil
-        },
-        func(item int) (int, error) {
-            return 3 + item, nil
-        },
+    Option(
+        func(item int) (int, error) { return 1 + item, nil },
+        func(item int) (int, error) { return 2 + item, nil },
+        func(item int) (int, error) { return 3 + item, nil },
     ).
     Stage(exampleEnd).
     Run()
 ```
 
+---
+
 ### Buffer
 
-In certain situations, you may want to introduce a buffer before a slow/expensive stage. Doing so **will not increase the overall performance of your pipeline** but may aid in faster response signalling to an upstream caller. Add a buffer like this:
+Insert a buffer before a slow stage:
 
 ```go
 gliter.NewPipeline(exampleGen()).
@@ -226,151 +188,67 @@ gliter.NewPipeline(exampleGen()).
     Run()
 ```
 
-In this example, `exampleMid` can process/emit up to 5 results while exampleEnd is busy. Once the buffer is full, `exampleMid` is blocked again until `exampleEnd` pulls from the buffer.
+---
 
 ### Tally
 
-There are two ways to tally items processed by the pipeline.
-
--   Toggle on config to get all the node counts returned:
+Count items processed, either via config:
 
 ```go
-counts, err := gliter.
-    NewPipeline(exampleGen()).
+counts, err := gliter.NewPipeline(exampleGen()).
     Config(gliter.PLConfig{ReturnCount: true}).
     Run()
-
-if err != nil {
-    panic(err)
-}
-
-for _, count := range counts {
-    fmt.Printf("Node: %s\nCount: %d\n\n", count.NodeID, count.Count)
-}
 ```
 
--   For more granular control, use the `Tally` channel like this:
+Or with a tally channel:
 
 ```go
 pipeline := NewPipeline(exampleGen())
 tally := pipeline.Tally()
-
-endWithTally := func(i int) (int, error) {
-    tally <- 1 // any integer
-    return exampleEnd(i)
-}
-
-// Produces one `PLNodeCount` for node "tally"
-count, err := pipeline.
-    Stage(endWithTally).
-    Run()
-
-if err != nil {
-    panic(err)
-}
-
-// All integers sent to tally are summed
-fmt.Printf("Node: %s\nCount: %d\n", count[0].NodeID, count[0].Count)
 ```
 
-This is helpful if slices/maps are passed through the pipeline and you want to tally the total number or individual records processed. **Note that the tally channel is listened to while the pipeline is running and is closed when all pipeline stages exit.** For that reason, tally can always be written to freely within a stage function. Writes to tally outside of a stage function however is not recommended.
+---
 
 ### Insight
 
-It may be helpful during testing to audit what is happening inside a pipeline.
+Enable logging for debugging:
 
-To do so, optionally set pipeline logging via one of the following modes in `pipeline.Config(gliter.PLConfig{...})`:
-
--   `LogCount` - Log result count table (start here)
--   `LogEmit` - Log every emit
--   `LogAll` - Log emit and count
--   `LogStep` - Interactive CLI stepper
+- `LogCount` — summary counts  
+- `LogEmit` — every emission  
+- `LogAll` — both  
+- `LogStep` — interactive stepper  
 
 ```go
-gliter.NewPipeline(exampleGen()). // with logging
+gliter.NewPipeline(exampleGen()).
     Config(gliter.PLConfig{LogAll: true}).
-    Stage(
-        exampleMid,
-        exampleAlt,
-    ).
-    Stage(
-        exampleEnd,
-    ).
+    Stage(exampleMid, exampleAlt).
+    Stage(exampleEnd).
     Run()
 ```
 
-Output:
+---
 
-```
-Emit -> 4
-Emit -> 16
-...
-Emit -> 100
-+-------+-------+-------+
-| node  | count | value |
-+-------+-------+-------+
-| GEN   | 5     | 5     |
-| 0:0:0 | 5     | 10    |
-| 0:0:1 | 5     | 10    |
-| 1:0:0 | 5     | 100   |
-| 1:1:0 | 5     | 100   |
-+-------+-------+-------+
-```
+## InParallel
 
-The node id shown in the table is constructed as **stage-index** : **parent-index** : **func-index**. For example, node id `4:1:2` would indicate the third function (idx 2) of the fifth stage (idx 4) branched from the second parent node (idx 1).
-
-"The second parent node" in this context can also be called the func at index 1 of the fourth stage.
-
-Throttle, buffer, and merge stages are logged a bit differently as **[THROTTLE]**, **[BUFFER]**, and **[MERGE]** respectively.
-
-> Note, you only pay for what you use. If logging it not enabled, these states are not tracked.
-
-### Examples
-
--   Get a boost with pre-built generators for common vendors in [./cmd/generators](https://github.com/arrno/gliter/blob/main/cmd/generators)
--   For a more realistic pipeline example, see [./cmd/pipeline_example.go](https://github.com/arrno/gliter/blob/main/cmd/pipeline_example.go)
--   For an example of composing pipeline patterns with `InParallel` AKA Fan-in/Fan-out, see [./cmd/pipeline_fan_out.go](https://github.com/arrno/gliter/blob/main/cmd/pipeline_fan_out.go)
--   For an example with pipeline benchmarking, see [this repository](https://github.com/arrno/benchmark-gliter)
-
-## In parallel
-
-A Fan-in/Fan-out utility to run a series of functions in parallel and collect results **preserving order at no cost.**.
-
-InParallel complement the Pipeline pattern in the following ways:
-
--   Use `InParallel` to run a set of unique pipelines concurrently
--   Call `InParallel` from inside a slow pipeline stage to fan-out/fan-in the expensive task
+Fan-out tasks, run concurrently, and collect results in order:
 
 ```go
 tasks := []func() (string, error){
-    func() (string, error) {
-        return "Hello", nil
-    },
-    func() (string, error) {
-        return ", ", nil
-    },
-    func() (string, error) {
-        return "Async!", nil
-    },
+    func() (string, error) { return "Hello", nil },
+    func() (string, error) { return ", ", nil },
+    func() (string, error) { return "Async!", nil },
 }
 
-// Run all tasks at the same time and collect results/err
 results, err := gliter.InParallel(tasks)
-if err != nil {
-    panic(err)
-}
-
-// Always prints "Hello, Async!"
-for _, result := range results {
-    fmt.Print(result)
-}
 ```
 
--   There is also a throttled InParallel function defined as `InParallelThrottle[T any](throttle int, funcs []func() (T, error)) ([]T, error)` which uses a token bucket to constrain max concurrent threads.
+Also available: `InParallelThrottle` for token-bucket concurrency.  
+
+---
 
 ## Worker Pool
 
-A generic worker pool. You can do worker pools in one line like this or you can keep them running with periodic work pushing and result collecting.
+Generic worker pools in one line:
 
 ```go
 results, errors := gliter.NewWorkerPool(3, handler).
@@ -379,68 +257,42 @@ results, errors := gliter.NewWorkerPool(3, handler).
     Collect()
 ```
 
-More examples in `./cmd/worker_pool_example.go`
+See `./cmd/worker_pool_example.go` for more.  
 
-## Misc
+---
 
-Other async helpers in this library include:
+## Misc Utilities
 
--   Do your own throttling with `ThrottleBy`
--   Do your own channel forking with `TeeBy`
--   `ReadOrDone` + `WriteOrDone`
--   `IterDone` - iterate until read or done channel is closed
--   `Any` - take one from any, consolidating "done" channels
--   `Multiplex` - merge multiple read streams into one read stream
+- `ThrottleBy` — custom throttling  
+- `TeeBy` — channel forking  
+- `ReadOrDone`, `WriteOrDone`, `IterDone`  
+- `Any` — consolidate “done” channels  
+- `Multiplex` — merge streams  
 
-Also included are some synchronous iter tools that may be helpful:
-
-The `List` Type
+### List Type (sync helpers)
 
 ```go
-list := gliter.List(0, 1, 2, 3, 4)
-list.Pop() // removes/returns `4`
-list.Push(8) // appends `8`
-```
-
-Chaining functions on a list
-
-```go
-value := gliter.
+val := gliter.
     List(0, 1, 2, 3, 4).
-    Filter(func(i int) bool {
-        return i%2 == 0
-    }). // []int{0, 2, 4}
-    Map(func(val int) int {
-        return val * 2
-    }). // []int{0, 4, 8}
-    Reduce(func(acc *int, val int) {
-        *acc += val
-    }) // 12
+    Filter(func(i int) bool { return i%2 == 0 }).
+    Map(func(val int) int { return val * 2 }).
+    Reduce(func(acc *int, val int) { *acc += val }) // 12
 ```
 
-Includes:
+Includes `Filter`, `Map`, `Reduce`, `Find`, `Len`, `Reverse`, `At`, `Slice`, etc.  
 
--   `list.Filter(func (i int) bool { return i%2 == 0 })`
--   `list.Map(func (i int) int { return i * 2 })`
--   `list.Reduce(func(acc *int, val int) { *acc += val })`
--   `list.Find(func (i int) bool { return i%2 == 0 })`
--   `list.Len()`
--   `list.Reverse()`
--   `list.At(i)`
--   `list.FPop()`
--   `list.Slice(start, stop)`
--   `list.Delete(index)`
--   `list.Insert(index, "value")`
+---
 
-Unwrap back into slice via `list.Iter()` or `list.Unwrap()`
+## Examples
 
-```go
-list := gliter.List(0, 1, 2, 3, 4)
-for _, item := range list.Iter() {
-    fmt.Println(item)
-}
-```
+- [Pre-built generators](./cmd/generators)  
+- [Pipeline example](./cmd/pipeline_example.go)  
+- [Fan-out / Fan-in](./cmd/pipeline_fan_out.go)  
+- [Benchmarks](https://github.com/arrno/benchmark-gliter)  
 
-Map to alt type via `Map(list, func(in) out)`
+---
 
-Something missing? Open a PR. **Contributions welcome!**
+## Contributing
+
+PRs welcome! 🚀  
+If something feels missing, broken, or unclear, open an issue or submit a fix.  
