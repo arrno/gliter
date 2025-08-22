@@ -4,7 +4,7 @@
 [![Go Build](https://github.com/arrno/gliter/actions/workflows/go.yml/badge.svg)](https://github.com/arrno/gliter/actions/workflows/go.yml)
 
 > **Composable async & concurrency patterns for Go.**  
-> Write pipelines, worker pools, and async utilities without worrying about race conditions, deadlocks, or goroutine leaks.  
+> Write pipelines, worker pools, and async utilities without worrying about race conditions, deadlocks, or goroutine leaks.
 
 ---
 
@@ -26,29 +26,29 @@ import "github.com/arrno/gliter"
 
 ## Table of Contents
 
-- [Overview](#overview)  
-- [Pipeline](#pipeline)  
-  - [Fork](#fork)  
-  - [Throttle](#throttle)  
-  - [Merge](#merge)  
-  - [Batch](#batch)  
-  - [Option](#option)  
-  - [Buffer](#buffer)  
-  - [Tally](#tally)  
-  - [Insight](#insight)  
-- [InParallel](#inparallel)  
-- [Worker Pool](#worker-pool)  
-- [Misc Utilities](#misc-utilities)  
-- [Examples](#examples)  
-- [Contributing](#contributing)  
+-   [Overview](#overview)
+-   [Pipeline](#pipeline)
+    -   [Fork](#fork)
+    -   [Throttle](#throttle)
+    -   [Merge](#merge)
+    -   [Batch](#batch)
+    -   [Option](#option)
+    -   [Buffer](#buffer)
+    -   [Tally](#tally)
+    -   [Insight](#insight)
+-   [InParallel](#inparallel)
+-   [Worker Pool](#worker-pool)
+-   [Misc Utilities](#misc-utilities)
+-   [Examples](#examples)
+-   [Contributing](#contributing)
 
 ---
 
 ## Overview
 
-Gliter makes it easy to assemble **normal business logic** into **complex async flows**.  
+Gliter makes it easy to assemble **normal business logic** into **complex async flows**.
 
-Instead of spending time debugging goroutines, channels, or leaks, you define your data flow declaratively and let Gliter handle the concurrency patterns.  
+Instead of spending time debugging goroutines, channels, or leaks, you define your data flow declaratively and let Gliter handle the concurrency patterns.
 
 ---
 
@@ -75,9 +75,9 @@ gliter.NewPipeline(streamTransactionsFromKafka).
 
 Key properties:
 
-- Data always flows downstream from the generator through each stage.  
-- Side effects (DB writes, API calls, etc.) belong inside stage functions.  
-- Errors short-circuit the pipeline automatically.  
+-   Data always flows downstream from the generator through each stage.
+-   Side effects (DB writes, API calls, etc.) belong inside stage functions.
+-   Errors short-circuit the pipeline automatically.
 
 ---
 
@@ -96,9 +96,9 @@ gliter.NewPipeline(exampleGen()).
 ```
 
 👉 Each downstream stage is duplicated for each branch.  
-⚠️ If processing pointers, clone before mutating downstream.  
+⚠️ If processing pointers, clone before mutating downstream.
 
-For branching without duplicating streams, use [`Option`](#option) or [`InParallel`](#inparallel).  
+For branching without duplicating streams, use [`Option`](#option) or [`InParallel`](#inparallel).
 
 ---
 
@@ -213,10 +213,10 @@ tally := pipeline.Tally()
 
 Enable logging for debugging:
 
-- `LogCount` — summary counts  
-- `LogEmit` — every emission  
-- `LogAll` — both  
-- `LogStep` — interactive stepper  
+-   `LogCount` — summary counts
+-   `LogEmit` — every emission
+-   `LogAll` — both
+-   `LogStep` — interactive stepper
 
 ```go
 gliter.NewPipeline(exampleGen()).
@@ -242,7 +242,7 @@ tasks := []func() (string, error){
 results, err := gliter.InParallel(tasks)
 ```
 
-Also available: `InParallelThrottle` for token-bucket concurrency.  
+Also available: `InParallelThrottle` for token-bucket concurrency.
 
 ---
 
@@ -257,17 +257,17 @@ results, errors := gliter.NewWorkerPool(3, handler).
     Collect()
 ```
 
-See `./cmd/worker_pool_example.go` for more.  
+See `./examples/worker_pool_example.go` for more.
 
 ---
 
 ## Misc Utilities
 
-- `ThrottleBy` — custom throttling  
-- `TeeBy` — channel forking  
-- `ReadOrDone`, `WriteOrDone`, `IterDone`  
-- `Any` — consolidate “done” channels  
-- `Multiplex` — merge streams  
+-   `ThrottleBy` — custom throttling
+-   `TeeBy` — channel forking
+-   `ReadOrDone`, `WriteOrDone`, `IterDone`
+-   `Any` — consolidate “done” channels
+-   `Multiplex` — merge streams
 
 ### List Type (sync helpers)
 
@@ -279,20 +279,20 @@ val := gliter.
     Reduce(func(acc *int, val int) { *acc += val }) // 12
 ```
 
-Includes `Filter`, `Map`, `Reduce`, `Find`, `Len`, `Reverse`, `At`, `Slice`, etc.  
+Includes `Filter`, `Map`, `Reduce`, `Find`, `Len`, `Reverse`, `At`, `Slice`, etc.
 
 ---
 
 ## Examples
 
-- [Pre-built generators](./cmd/generators)  
-- [Pipeline example](./cmd/pipeline_example.go)  
-- [Fan-out / Fan-in](./cmd/pipeline_fan_out.go)  
-- [Benchmarks](https://github.com/arrno/benchmark-gliter)  
+-   [Pre-built generators](./examples/generators)
+-   [Pipeline example](./examples/pipeline_example.go)
+-   [Fan-out / Fan-in](./examples/pipeline_fan_out.go)
+-   [Benchmarks](https://github.com/arrno/benchmark-gliter)
 
 ---
 
 ## Contributing
 
 PRs welcome! 🚀  
-If something feels missing, broken, or unclear, open an issue or submit a fix.  
+If something feels missing, broken, or unclear, open an issue or submit a fix.

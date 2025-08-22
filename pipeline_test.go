@@ -82,7 +82,7 @@ func TestPipelineCancel(t *testing.T) {
 		).
 		Run()
 
-	assert.Nil(t, err)
+	assert.Equal(t, err, ErrContextCanceled)
 
 	ctx, _ = context.WithTimeout(context.Background(), 200*time.Millisecond)
 
@@ -96,7 +96,7 @@ func TestPipelineCancel(t *testing.T) {
 		).
 		Run()
 
-	assert.Nil(t, err)
+	assert.Equal(t, err, ErrContextCanceled)
 }
 
 func TestPipelineGenErr(t *testing.T) {

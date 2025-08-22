@@ -24,6 +24,7 @@ var (
 	ErrEmptyThrottle   error = errors.New("pipeline run error: empty throttle: throttle must be a positive value")
 	ErrInvalidThrottle error = errors.New("pipeline run error: invalid throttle: throttle value cannot be higher than channel count")
 	ErrNilFunc         error = errors.New("pipeline run error: invalid stage: Nil function")
+	ErrContextCanceled error = errors.New("pipeline run error: context canceled")
 )
 
 // PLConfig controls limited pipeline behavior.
@@ -524,6 +525,8 @@ func (p *Pipeline[T]) handleMergeFunc(
 
 // Run builds and launches all the pipeline stages.
 func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
+	cleanup := make(chan struct{})
+	defer close(cleanup)
 
 	if p.generator == nil {
 		return nil, errors.New("pipeline run error. Invalid pipeline: No generator provided")
@@ -544,15 +547,26 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 
 	// Init async helpers
 	done := make(chan any)
-	anyDone := AnyWithCtx(p.ctx, done)
+	var anyDone <-chan any
+	anyDone = done
 
 	if stepDone != nil {
-		anyDone = Any(anyDone, stepDone)
+		anyDone = Any(done, stepDone)
 	}
 
 	dataChan := make(chan T)
 	errChan := make(chan error)
 	var wg sync.WaitGroup
+
+	// Listen for context cancel
+	go func() {
+		select {
+		case <-p.ctx.Done():
+			WriteOrDone(ErrContextCanceled, errChan, anyDone)
+		case <-anyDone:
+		case <-cleanup:
+		}
+	}()
 
 	// Init generator
 	wg.Add(1)
