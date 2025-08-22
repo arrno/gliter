@@ -1,6 +1,7 @@
 package gliter
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -58,6 +59,7 @@ type Pipeline[T any] struct {
 	buffers     map[int]uint
 	optionForks map[int][]func(T) (T, error)
 	tally       <-chan int
+	ctx         context.Context
 	config      PLConfig
 }
 
@@ -67,8 +69,14 @@ func NewPipeline[T any](gen func() (T, bool, error)) *Pipeline[T] {
 		buffers:     map[int]uint{},
 		merges:      map[int]func(data []T) ([]T, error){},
 		optionForks: map[int][]func(T) (T, error){},
+		ctx:         context.Background(),
 		generator:   gen,
 	}
+}
+
+func (p *Pipeline[T]) WithContext(ctx context.Context) *Pipeline[T] {
+	p.ctx = ctx
+	return p
 }
 
 func (p *Pipeline[T]) Tally() chan<- int {
@@ -536,11 +544,10 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 
 	// Init async helpers
 	done := make(chan any)
-	var anyDone <-chan any
-	anyDone = done
+	anyDone := AnyWithCtx(p.ctx, done)
 
 	if stepDone != nil {
-		anyDone = Any(done, stepDone)
+		anyDone = Any(anyDone, stepDone)
 	}
 
 	dataChan := make(chan T)

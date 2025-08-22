@@ -1,6 +1,9 @@
 package gliter
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 // InParallel runs all the functions asynchronously and returns the results in order or the first error.
 func InParallel[T any](funcs []func() (T, error)) ([]T, error) {
@@ -179,33 +182,46 @@ func ReadOrDone[T any](read <-chan T, done <-chan any) (T, bool) {
 	}
 }
 
-// Any consolidates a set of 'done' channels into one done channel.
-func Any(channels ...<-chan any) <-chan any {
-	switch len(channels) {
+func AnyWithCtx(ctx context.Context, chans ...<-chan any) <-chan any {
+	out := make(chan any)
+	go func() {
+		defer close(out)
+		select {
+		case <-ctx.Done():
+		case <-Any(chans...):
+		}
+	}()
+	return out
+}
+
+// Any closes when any of the input channels closes.
+func Any(chans ...<-chan any) <-chan any {
+	switch len(chans) {
 	case 0:
 		return nil
 	case 1:
-		return channels[0]
+		return chans[0]
 	}
-	orDone := make(chan any)
+
+	out := make(chan any)
 	go func() {
-		defer close(orDone)
-		switch len(channels) {
+		defer close(out)
+		switch len(chans) {
 		case 2:
 			select {
-			case <-channels[0]:
-			case <-channels[1]:
+			case <-chans[0]:
+			case <-chans[1]:
 			}
 		default:
 			select {
-			case <-channels[0]:
-			case <-channels[1]:
-			case <-channels[2]:
-			case <-Any(append(channels[3:], orDone)...):
+			case <-chans[0]:
+			case <-chans[1]:
+			case <-chans[2]:
+			case <-Any(append(chans[3:], out)...):
 			}
 		}
 	}()
-	return orDone
+	return out
 }
 
 // IterDone combines a read and done channel for convenient iterating.

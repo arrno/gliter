@@ -1,6 +1,7 @@
 package gliter
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -58,6 +60,43 @@ func TestPipelineErr(t *testing.T) {
 		Throttle(1).
 		Run()
 	assert.NotNil(t, err)
+}
+
+func TestPipelineCancel(t *testing.T) {
+	_, exampleEnd := makeEnd()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := NewPipeline(infiniteGen()).
+		WithContext(ctx).
+		Stage(
+			exampleMid,
+		).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+
+	assert.Nil(t, err)
+
+	ctx, _ = context.WithTimeout(context.Background(), 200*time.Millisecond)
+
+	_, err = NewPipeline(infiniteGen()).
+		WithContext(ctx).
+		Stage(
+			exampleMid,
+		).
+		Stage(
+			exampleEnd,
+		).
+		Run()
+
+	assert.Nil(t, err)
 }
 
 func TestPipelineGenErr(t *testing.T) {
@@ -674,6 +713,14 @@ func exampleGen(n int) func() (int, bool, error) {
 			return 0, false, nil
 		}
 		return data[index], true, nil
+	}
+}
+
+func infiniteGen() func() (int, bool, error) {
+	index := -1
+	return func() (int, bool, error) {
+		index++
+		return index, true, nil
 	}
 }
 
