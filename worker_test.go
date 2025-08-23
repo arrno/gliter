@@ -38,3 +38,18 @@ func TestWorkerErrors(t *testing.T) {
 	errors := b.TakeErrors()
 	assert.Equal(t, 100, len(errors))
 }
+
+func TestWorkerOptions(t *testing.T) {
+	b := NewWorkerPool(3, func(val int) (string, error) {
+		return "", errors.New("oh no")
+	}, WithBuffer(10), WithRetry(2))
+
+	for range 10 {
+		b.Push(0, 1, 2)
+	}
+	b.Close()
+
+	assert.True(t, b.IsErr())
+	errors := b.TakeErrors()
+	assert.Equal(t, 60, len(errors))
+}

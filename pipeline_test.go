@@ -427,6 +427,80 @@ func TestPipelineOption(t *testing.T) {
 	assert.Equal(t, expectedNodeCounts, resultNodeCounts)
 }
 
+func TestPipelineWorkerPool(t *testing.T) {
+	var mu sync.Mutex
+	results := make([]int, 0, 5)
+	counts, err := NewPipeline(exampleGen(5)).
+		Config(PLConfig{ReturnCount: true}).
+		Stage(
+			// branch A
+			func(item int) (int, error) {
+				return item, nil
+			},
+			// branch B
+			func(item int) (int, error) {
+				return item, nil
+			},
+		).
+		WorkerPool(
+			func(item int) (int, error) {
+				return item * 2, nil
+			},
+			WithSize(3),
+			WithBuffer(10),
+			WithRetry(2),
+		).
+		WorkerPool(
+			func(item int) (int, error) {
+				return item * 2, nil
+			},
+			WithSize(2),
+			WithBuffer(10),
+			WithRetry(2),
+		).
+		Stage(
+			func(i int) (int, error) {
+				mu.Lock()
+				results = append(results, i)
+				mu.Unlock()
+				return 0, nil
+			},
+		).
+		Run()
+
+	assert.Nil(t, err)
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i] < results[j]
+	})
+
+	expectedResults := []int{4, 4, 8, 8, 12, 12, 16, 16, 20, 20}
+	expectedNodeIds := []string{
+		"GEN",
+		"0:0:0",
+		"0:0:1",
+		"1:0:0",
+		"1:1:0",
+		"2:0:0",
+		"2:1:0",
+		"3:0:0",
+		"3:1:0",
+	}
+
+	expectedNodeCounts := []int{5, 5, 5, 5, 5, 5, 5, 5, 5}
+	resultNodeIds := make([]string, 9)
+	resultNodeCounts := make([]int, 9)
+
+	for i, count := range counts {
+		resultNodeIds[i] = count.NodeID
+		resultNodeCounts[i] = count.Count
+	}
+
+	assert.Equal(t, expectedNodeIds, resultNodeIds)
+	assert.Equal(t, expectedNodeCounts, resultNodeCounts)
+	assert.Equal(t, expectedResults, results)
+}
+
 func TestPipelineOptionErr(t *testing.T) {
 	_, exampleEnd := makeNoopEnd()
 	_, err := NewPipeline(exampleGen(5)).
