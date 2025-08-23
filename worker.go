@@ -32,6 +32,12 @@ func WithBuffer(buffer int) Option {
 	}
 }
 
+func WithSize(size int) Option {
+	return func(c *WorkerConfig) {
+		c.size = max(1, size)
+	}
+}
+
 type WorkerPool[T, R any] struct {
 	mu           sync.Mutex
 	cfg          *WorkerConfig
@@ -43,19 +49,6 @@ type WorkerPool[T, R any] struct {
 	results      []R
 	wg           sync.WaitGroup
 	errors       []error
-}
-
-func NewWorkerStage[T any](size int, handler func(val T) (T, error), opts ...Option) (
-	stageFunc func([]T) ([]T, []error),
-	close func() *WorkerPool[T, T],
-) {
-	workerPool := NewWorkerPool(size, handler, opts...)
-	stageFunc = func(values []T) ([]T, []error) {
-		workerPool.Push(values...)
-		return workerPool.Drain()
-	}
-	close = workerPool.Close
-	return
 }
 
 func NewWorkerPool[T, R any](size int, handler func(val T) (R, error), opts ...Option) *WorkerPool[T, R] {
@@ -186,17 +179,6 @@ func (b *WorkerPool[T, R]) TakeResults() (results []R) {
 }
 
 func (b *WorkerPool[T, R]) Collect() (results []R, errors []error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	results = b.results
-	errors = b.errors
-	b.results = nil
-	b.errors = nil
-	return
-}
-
-func (b *WorkerPool[T, R]) Drain() (results []R, errors []error) {
-	// TODO this needs to force drain the work cache into results first
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	results = b.results

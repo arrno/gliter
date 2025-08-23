@@ -53,25 +53,27 @@ type batch[T any] struct {
 
 // Pipeline spawns threads for all stage functions and orchestrates channel signals between them.
 type Pipeline[T any] struct {
-	generator   func() (T, bool, error)
-	stages      []stage[T]
-	batches     map[int]batch[T]
-	merges      map[int]func([]T) ([]T, error)
-	buffers     map[int]uint
-	optionForks map[int][]func(T) (T, error)
-	tally       <-chan int
-	ctx         context.Context
-	config      PLConfig
+	generator    func() (T, bool, error)
+	stages       []stage[T]
+	batches      map[int]batch[T]
+	merges       map[int]func([]T) ([]T, error)
+	buffers      map[int]uint
+	optionForks  map[int][]func(T) (T, error)
+	stageConfigs map[int]*WorkerConfig
+	tally        <-chan int
+	ctx          context.Context
+	config       PLConfig
 }
 
 func NewPipeline[T any](gen func() (T, bool, error)) *Pipeline[T] {
 	return &Pipeline[T]{
-		batches:     map[int]batch[T]{},
-		buffers:     map[int]uint{},
-		merges:      map[int]func(data []T) ([]T, error){},
-		optionForks: map[int][]func(T) (T, error){},
-		ctx:         context.Background(),
-		generator:   gen,
+		batches:      map[int]batch[T]{},
+		buffers:      map[int]uint{},
+		merges:       map[int]func(data []T) ([]T, error){},
+		optionForks:  map[int][]func(T) (T, error){},
+		stageConfigs: map[int]*WorkerConfig{},
+		ctx:          context.Background(),
+		generator:    gen,
 	}
 }
 
@@ -136,6 +138,24 @@ func (p *Pipeline[T]) Merge(f func(data []T) ([]T, error)) *Pipeline[T] {
 // has an equal chance of entering any one of the option functions which are ready to receive.
 func (p *Pipeline[T]) Option(fs ...func(data T) (T, error)) *Pipeline[T] {
 	p.optionForks[len(p.stages)] = fs
+	p.stages = append(p.stages, stage[T]{stageType: OPTION, handlers: make([]func(data T) (T, error), 1)})
+	return p
+}
+
+// WorkerPool is a wrapper around an Option stage that allows for more control. N workers are spawned
+// to wrap the given handler with B buffer and R retries where N is Option->Size, B is Option->Buffer,
+// and R is Option->Retry.
+func (p *Pipeline[T]) WorkerPool(f func(data T) (T, error), opts ...Option) *Pipeline[T] {
+	cfg := &WorkerConfig{1, 1, 2}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	funcs := make([]func(data T) (T, error), cfg.size)
+	for i := range cfg.size {
+		funcs[i] = f
+	}
+	p.optionForks[len(p.stages)] = funcs
+	p.stageConfigs[len(p.stages)] = cfg
 	p.stages = append(p.stages, stage[T]{stageType: OPTION, handlers: make([]func(data T) (T, error), 1)})
 	return p
 }
@@ -368,8 +388,17 @@ func (p *Pipeline[T]) handleOptionFunc(
 	}
 
 	optionFuncs := p.optionForks[index]
+	cfg := p.stageConfigs[index]
 
-	buffer := make(chan T, len(optionFuncs))
+	if cfg == nil {
+		cfg = &WorkerConfig{
+			size:   len(optionFuncs),
+			buffer: len(optionFuncs),
+			retry:  1,
+		}
+	}
+
+	buffer := make(chan T, cfg.buffer)
 	nilFunc := false
 	var workerWg sync.WaitGroup
 
@@ -394,20 +423,40 @@ func (p *Pipeline[T]) handleOptionFunc(
 			defer workerWg.Done()
 			for {
 				if val, ok := ReadOrDone(buffer, done); ok {
-					result, err := handler(val)
-					if err != nil {
-						WriteOrDone(err, errChan, done)
+					var result T
+					var err error
+
+					// handle with retry
+					for i := range cfg.retry {
+						result, err = handler(val)
+						if err != nil {
+							if !WriteOrDone(
+								fmt.Errorf("work encountered err on attempt %d of %d. Err: %w", i+1, cfg.retry, err),
+								errChan,
+								done,
+							) {
+								return
+							}
+							continue // retry
+						}
+						break // err is nil
+					}
+
+					if err != nil { // error remains after retries
 						return
 					}
+
 					if keepCount {
 						node.IncAs(result) // single node multi writers
 					}
+
 					if stepSignal != nil {
 						var T any
 						if !WriteOrDone(T, stepSignal, done) {
 							return
 						}
 					}
+
 					if !WriteOrDone(result, outChan, done) {
 						return
 					}
