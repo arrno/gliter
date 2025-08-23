@@ -34,10 +34,49 @@ type PLConfig struct {
 	LogCount    bool
 	ReturnCount bool
 	LogStep     bool
+	ctx         context.Context
 }
 
 func (c PLConfig) keepCount() bool {
 	return c.LogAll || c.LogCount || c.LogStep || c.ReturnCount
+}
+
+type PLOption func(*PLConfig)
+
+func WithLogAll() PLOption {
+	return func(c *PLConfig) {
+		c.LogAll = true
+	}
+}
+
+func WithLogEmit() PLOption {
+	return func(c *PLConfig) {
+		c.LogEmit = true
+	}
+}
+
+func WithLogCount() PLOption {
+	return func(c *PLConfig) {
+		c.LogCount = true
+	}
+}
+
+func WithReturnCount() PLOption {
+	return func(c *PLConfig) {
+		c.ReturnCount = true
+	}
+}
+
+func WithLogStep() PLOption {
+	return func(c *PLConfig) {
+		c.LogStep = true
+	}
+}
+
+func WithContext(ctx context.Context) PLOption {
+	return func(c *PLConfig) {
+		c.ctx = ctx
+	}
 }
 
 type stage[T any] struct {
@@ -61,25 +100,23 @@ type Pipeline[T any] struct {
 	optionForks  map[int][]func(T) (T, error)
 	stageConfigs map[int]*WorkerConfig
 	tally        <-chan int
-	ctx          context.Context
-	config       PLConfig
+	config       *PLConfig
 }
 
-func NewPipeline[T any](gen func() (T, bool, error)) *Pipeline[T] {
+func NewPipeline[T any](gen func() (T, bool, error), opts ...PLOption) *Pipeline[T] {
+	cfg := &PLConfig{ctx: context.Background()}
+	for _, opt := range opts {
+		opt(cfg)
+	}
 	return &Pipeline[T]{
 		batches:      map[int]batch[T]{},
 		buffers:      map[int]uint{},
 		merges:       map[int]func(data []T) ([]T, error){},
 		optionForks:  map[int][]func(T) (T, error){},
 		stageConfigs: map[int]*WorkerConfig{},
-		ctx:          context.Background(),
+		config:       cfg,
 		generator:    gen,
 	}
-}
-
-func (p *Pipeline[T]) WithContext(ctx context.Context) *Pipeline[T] {
-	p.ctx = ctx
-	return p
 }
 
 func (p *Pipeline[T]) Tally() chan<- int {
@@ -161,7 +198,10 @@ func (p *Pipeline[T]) WorkerPool(f func(data T) (T, error), opts ...Option) *Pip
 }
 
 func (p *Pipeline[T]) Config(config PLConfig) *Pipeline[T] {
-	p.config = config
+	p.config = &config
+	if p.config.ctx == nil {
+		p.config.ctx = context.Background()
+	}
 	return p
 }
 
@@ -610,7 +650,7 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 	// Listen for context cancel
 	go func() {
 		select {
-		case <-p.ctx.Done():
+		case <-p.config.ctx.Done():
 			WriteOrDone(ErrContextCanceled, errChan, anyDone)
 		case <-anyDone:
 		case <-cleanup:

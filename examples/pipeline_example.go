@@ -187,7 +187,10 @@ func ExampleMain() {
 	}
 
 	// We create a new pipeline out of our generator.
-	pipeline := gliter.NewPipeline(gen())
+	pipeline := gliter.NewPipeline(
+		gen(),
+		gliter.WithLogCount(),
+	)
 
 	// Let's initialize a tally channel for better control over the processed count.
 	tally := pipeline.Tally()
@@ -198,7 +201,6 @@ func ExampleMain() {
 
 	// Lastly, we assemble our pipeline stages, enable logging, and run the pipeline.
 	count, err := pipeline.
-		Config(gliter.PLConfig{LogCount: true}).
 		Stage(
 			ConvertToCents,
 			ApplyEvenFee,

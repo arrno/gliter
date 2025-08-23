@@ -89,8 +89,10 @@ func ExampleFanOut() {
 	}
 
 	// assemble and run the pipeline
-	_, err := gliter.NewPipeline(gen()).
-		Config(gliter.PLConfig{LogCount: true}).
+	_, err := gliter.NewPipeline(
+		gen(),
+		gliter.WithLogCount(),
+	).
 		Stage(wrap).
 		Stage(fanOutStore).
 		Run()

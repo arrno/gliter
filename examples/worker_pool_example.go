@@ -12,7 +12,7 @@ func simple() {
 		return fmt.Sprintf("Got %d", val), nil
 	}
 
-	results, errors := gliter.NewWorkerPool(3, handler).
+	results, errors := gliter.NewWorkerPool(3, handler, gliter.WithRetry(2)).
 		Push(1, 2, 3, 4, 5).
 		Close().
 		Collect()
@@ -29,7 +29,7 @@ func periodic() {
 		return fmt.Sprintf("Got %d", val), nil
 	}
 
-	b := gliter.NewWorkerPool(3, handler) // make and spawn
+	b := gliter.NewWorkerPool(3, handler, gliter.WithBuffer(6)) // make and spawn
 
 	// - RUN -
 	for range 10 {

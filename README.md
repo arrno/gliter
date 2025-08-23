@@ -29,15 +29,17 @@ import "github.com/arrno/gliter"
 -   [Overview](#overview)
 -   [Pipeline](#pipeline)
     -   [Fork](#fork)
+    -   [WorkerPool](#workerpool-stage)
     -   [Throttle](#throttle)
     -   [Merge](#merge)
     -   [Batch](#batch)
     -   [Option](#option)
     -   [Buffer](#buffer)
-    -   [Tally](#tally)
+    -   [Context / Cancel](#context--cancel)
+    -   [Count / Tally](#count--tally)
     -   [Insight](#insight)
 -   [InParallel](#inparallel)
--   [Worker Pool](#worker-pool)
+-   [Worker Pool (standalone)](#worker-pool-standalone)
 -   [Misc Utilities](#misc-utilities)
 -   [Examples](#examples)
 -   [Contributing](#contributing)
@@ -79,6 +81,11 @@ Key properties:
 -   Side effects (DB writes, API calls, etc.) belong inside stage functions.
 -   Errors short-circuit the pipeline automatically.
 
+Options:
+
+-   [Logging options](#insight)
+-   [Cancel options](#context--cancel)
+
 ---
 
 ### Fork
@@ -98,7 +105,39 @@ gliter.NewPipeline(exampleGen()).
 👉 Each downstream stage is duplicated for each branch.  
 ⚠️ If processing pointers, clone before mutating downstream.
 
-For branching without duplicating streams, use [`Option`](#option) or [`InParallel`](#inparallel).
+For branching without duplicating streams, use [`WorkerPool Stage`](#workerpool-stage), [`Option Stage`](#option), or [`InParallel`](#inparallel).
+
+---
+
+### WorkerPool Stage
+
+Fans out a handler function into `N` concurrent workers.  
+Each record is processed by exactly one worker (no cloning or duplication).
+
+Configure behavior with options:
+
+-   `WithSize(N)` → number of workers to spawn
+-   `WithBuffer(M)` → buffered channel capacity between upstream and workers
+-   `WithRetry(R)` → automatic retries on failure
+
+Allows fine-grained control over throughput, backpressure, and fault tolerance.
+
+```go
+gliter.NewPipeline(exampleGen()).
+    WorkerPool(
+        func(item int) (int, error) { return 1 + item, nil },
+        WithSize(3),
+        WithBuffer(6),
+        WithRetry(2),
+    ).
+    WorkerPool(
+        func(item int) (int, error) { return 2 + item, nil },
+        WithSize(6),
+        WithBuffer(12),
+        WithRetry(2),
+    ).
+    Run()
+```
 
 ---
 
@@ -190,14 +229,34 @@ gliter.NewPipeline(exampleGen()).
 
 ---
 
-### Tally
+### Context / Cancel
+
+Use the `WithContext` option for timeout/cancel:
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
+defer cancel()
+
+gliter.NewPipeline(
+    exampleGen(),
+    gliter.WithContext(ctx),
+).
+    Stage(exampleMid).
+    Stage(exampleEnd).
+    Run()
+```
+
+---
+
+### Count / Tally
 
 Count items processed, either via config:
 
 ```go
-counts, err := gliter.NewPipeline(exampleGen()).
-    Config(gliter.PLConfig{ReturnCount: true}).
-    Run()
+counts, err := gliter.NewPipeline(
+    exampleGen(),
+    gliter.WithReturnCount(),
+).Run()
 ```
 
 Or with a tally channel:
@@ -213,14 +272,16 @@ tally := pipeline.Tally()
 
 Enable logging for debugging:
 
--   `LogCount` — summary counts
--   `LogEmit` — every emission
--   `LogAll` — both
--   `LogStep` — interactive stepper
+-   `WithLogCount` — summary counts
+-   `WithLogEmit` — every emission
+-   `WithLogAll` — both
+-   `WithLogStep` — interactive stepper
 
 ```go
-gliter.NewPipeline(exampleGen()).
-    Config(gliter.PLConfig{LogAll: true}).
+gliter.NewPipeline(
+    exampleGen(),
+    gliter.WithLogAll(),
+).
     Stage(exampleMid, exampleAlt).
     Stage(exampleEnd).
     Run()
@@ -246,7 +307,7 @@ Also available: `InParallelThrottle` for token-bucket concurrency.
 
 ---
 
-## Worker Pool
+## Worker Pool (standalone)
 
 Generic worker pools in one line:
 
@@ -256,6 +317,11 @@ results, errors := gliter.NewWorkerPool(3, handler).
     Close().
     Collect()
 ```
+
+Supported WorkerPool Options:
+
+-   `WithRetry`
+-   `WithBuffer`
 
 See `./examples/worker_pool_example.go` for more.
 

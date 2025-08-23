@@ -72,8 +72,10 @@ func TestPipelineCancel(t *testing.T) {
 		cancel()
 	}()
 
-	_, err := NewPipeline(infiniteGen()).
-		WithContext(ctx).
+	_, err := NewPipeline(
+		infiniteGen(),
+		WithContext(ctx),
+	).
 		Stage(
 			exampleMid,
 		).
@@ -87,8 +89,10 @@ func TestPipelineCancel(t *testing.T) {
 	ctx, cancel = context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	_, err = NewPipeline(infiniteGen()).
-		WithContext(ctx).
+	_, err = NewPipeline(
+		infiniteGen(),
+		WithContext(ctx),
+	).
 		Stage(
 			exampleMid,
 		).
@@ -287,8 +291,10 @@ func TestPipelineThrottleErr(t *testing.T) {
 
 func TestPipelineMerge(t *testing.T) {
 	col, exampleEnd := makeNoopEnd()
-	counts, err := NewPipeline(exampleGen(5)).
-		Config(PLConfig{ReturnCount: true}).
+	counts, err := NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
 		Stage(
 			exampleMid, // branch A
 			exampleMid, // branch B
@@ -334,8 +340,10 @@ func TestPipelineMerge(t *testing.T) {
 
 	// With no forking
 	col, exampleEnd = makeNoopEnd()
-	counts, err = NewPipeline(exampleGen(5)).
-		Config(PLConfig{ReturnCount: true}).
+	counts, err = NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
 		Stage(
 			exampleMid, // branch A
 		).
@@ -385,8 +393,10 @@ func TestPipelineMergeErr(t *testing.T) {
 
 func TestPipelineOption(t *testing.T) {
 	_, exampleEnd := makeNoopEnd()
-	counts, err := NewPipeline(exampleGen(5)).
-		Config(PLConfig{ReturnCount: true}).
+	counts, err := NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
 		Stage(
 			exampleMid, // branch A
 			exampleMid, // branch B
@@ -430,8 +440,10 @@ func TestPipelineOption(t *testing.T) {
 func TestPipelineWorkerPool(t *testing.T) {
 	var mu sync.Mutex
 	results := make([]int, 0, 5)
-	counts, err := NewPipeline(exampleGen(5)).
-		Config(PLConfig{ReturnCount: true}).
+	counts, err := NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
 		Stage(
 			// branch A
 			func(item int) (int, error) {
@@ -558,23 +570,26 @@ func TestPipelineTally(t *testing.T) {
 }
 
 func TestEmptyStage(t *testing.T) {
-	count, err := NewPipeline(exampleGen(5)).
-		Config(PLConfig{ReturnCount: true}).
+	count, err := NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
 		Stage().
 		Run()
 	assert.Nil(t, err)
 	assert.Equal(t, count[0].Count, 5)
 	//
-	count, err = NewPipeline(exampleGen(5)).
-		Config(PLConfig{ReturnCount: true}).
+	count, err = NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
 		Throttle(0).
 		Run()
 	assert.Nil(t, err)
 	assert.Equal(t, count[0].Count, 5)
 
 	// Empty generator
-	_, err = NewPipeline[int](nil).
-		Config(PLConfig{ReturnCount: true}).
+	_, err = NewPipeline[int](nil, WithReturnCount()).
 		Stage(exampleMid).
 		Run()
 	assert.NotNil(t, err)
@@ -716,8 +731,10 @@ func TestPipelineBuffer(t *testing.T) {
 
 func TestPipelineMix(t *testing.T) {
 	_, exampleEnd := makeEnd()
-	count, err := NewPipeline(exampleGen(5)).
-		Config(PLConfig{ReturnCount: true}).
+	count, err := NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
 		Stage(
 			exampleMid, // branch A
 			exampleMid, // branch B
