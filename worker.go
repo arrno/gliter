@@ -2,6 +2,7 @@ package gliter
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -11,12 +12,31 @@ var (
 	ErrInvalidOperationHasRun     error = errors.New("workerPool invalid operation error: workerPool has already run")
 )
 
+type WorkerConfig struct {
+	size   int
+	retry  int
+	buffer int
+}
+
+type Option func(*WorkerConfig)
+
+func WithRetry(attempts int) Option {
+	return func(c *WorkerConfig) {
+		c.retry = max(1, attempts)
+	}
+}
+
+func WithBuffer(buffer int) Option {
+	return func(c *WorkerConfig) {
+		c.buffer = max(1, buffer)
+	}
+}
+
 type WorkerPool[T, R any] struct {
 	mu           sync.Mutex
-	size         int
+	cfg          *WorkerConfig
 	queue        chan T
 	resultBuffer chan R
-	bufferSize   int
 	handler      func(val T) (R, error)
 	running      bool
 	hasRun       bool
@@ -25,21 +45,36 @@ type WorkerPool[T, R any] struct {
 	errors       []error
 }
 
-func NewWorkerPool[T, R any](size int, handler func(val T) (R, error)) *WorkerPool[T, R] {
-	buffSize := size * 2
+func NewWorkerStage[T any](size int, handler func(val T) (T, error), opts ...Option) (
+	stageFunc func([]T) ([]T, []error),
+	close func() *WorkerPool[T, T],
+) {
+	workerPool := NewWorkerPool(size, handler, opts...)
+	stageFunc = func(values []T) ([]T, []error) {
+		workerPool.Push(values...)
+		return workerPool.Drain()
+	}
+	close = workerPool.Close
+	return
+}
+
+func NewWorkerPool[T, R any](size int, handler func(val T) (R, error), opts ...Option) *WorkerPool[T, R] {
+	cfg := &WorkerConfig{size, 1, size * 2}
+	for _, opt := range opts {
+		opt(cfg)
+	}
 	wp := WorkerPool[T, R]{
-		size:         size,
-		queue:        make(chan T, buffSize),
-		bufferSize:   buffSize,
-		resultBuffer: make(chan R, buffSize),
-		results:      make([]R, 0, buffSize),
+		cfg:          cfg,
+		queue:        make(chan T, cfg.buffer),
+		resultBuffer: make(chan R, cfg.buffer),
+		results:      make([]R, 0, cfg.buffer),
 		handler:      handler,
 	}
 	wp.wg.Add(1)
-	return wp.boot()
+	return wp.Boot()
 }
 
-func (b *WorkerPool[T, R]) boot() *WorkerPool[T, R] {
+func (b *WorkerPool[T, R]) Boot() *WorkerPool[T, R] {
 	b.mu.Lock()
 	if b.running || b.hasRun {
 		b.mu.Unlock()
@@ -51,19 +86,12 @@ func (b *WorkerPool[T, R]) boot() *WorkerPool[T, R] {
 
 	var wg sync.WaitGroup
 
-	for range b.size {
+	for range b.cfg.size {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for item := range b.queue {
-				r, err := b.handler(item)
-				if err != nil {
-					b.mu.Lock()
-					b.errors = append(b.errors, err)
-					b.mu.Unlock()
-				} else {
-					b.resultBuffer <- r
-				}
+				b.doWork(item)
 			}
 		}()
 	}
@@ -74,14 +102,14 @@ func (b *WorkerPool[T, R]) boot() *WorkerPool[T, R] {
 	}()
 
 	go func() {
-		cache := make([]R, 0, b.bufferSize)
+		cache := make([]R, 0, b.cfg.buffer)
 		for result := range b.resultBuffer {
 			cache = append(cache, result)
-			if len(cache) >= b.bufferSize {
+			if len(cache) >= b.cfg.buffer {
 				b.mu.Lock()
 				b.results = append(b.results, cache...)
 				b.mu.Unlock()
-				cache = make([]R, 0, b.bufferSize)
+				cache = make([]R, 0, b.cfg.buffer)
 			}
 		}
 		b.mu.Lock()
@@ -91,6 +119,20 @@ func (b *WorkerPool[T, R]) boot() *WorkerPool[T, R] {
 	}()
 
 	return b
+}
+
+func (b *WorkerPool[T, R]) doWork(task T) {
+	for i := 0; i < b.cfg.retry; i++ {
+		result, err := b.handler(task)
+		if err != nil {
+			b.mu.Lock()
+			b.errors = append(b.errors, fmt.Errorf("work encountered err on attempt %d of %d. Err: %w", i+1, b.cfg.retry, err))
+			b.mu.Unlock()
+		} else {
+			b.resultBuffer <- result
+			break
+		}
+	}
 }
 
 func (b *WorkerPool[T, R]) Push(items ...T) *WorkerPool[T, R] {
@@ -144,6 +186,17 @@ func (b *WorkerPool[T, R]) TakeResults() (results []R) {
 }
 
 func (b *WorkerPool[T, R]) Collect() (results []R, errors []error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	results = b.results
+	errors = b.errors
+	b.results = nil
+	b.errors = nil
+	return
+}
+
+func (b *WorkerPool[T, R]) Drain() (results []R, errors []error) {
+	// TODO this needs to force drain the work cache into results first
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	results = b.results
