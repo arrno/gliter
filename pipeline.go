@@ -440,15 +440,7 @@ func (p *Pipeline[T]) handleOptionFunc(
 
 	buffer := make(chan T, cfg.buffer)
 	nilFunc := false
-	var workerWg sync.WaitGroup
-
-	// When all our workers exit, close downstream channels
-	go func() {
-		defer wg.Done()
-		workerWg.Wait()
-		close(outChan)
-		close(errChan)
-	}()
+	var sendersWg sync.WaitGroup
 
 	for _, f := range optionFuncs {
 
@@ -456,11 +448,11 @@ func (p *Pipeline[T]) handleOptionFunc(
 			nilFunc = true
 			break
 		}
-		workerWg.Add(1)
+		sendersWg.Add(1)
 
 		// worker
 		go func(handler func(T) (T, error)) {
-			defer workerWg.Done()
+			defer sendersWg.Done()
 			for {
 				if val, ok := ReadOrDone(buffer, done); ok {
 					var result T
@@ -507,9 +499,11 @@ func (p *Pipeline[T]) handleOptionFunc(
 		}(f)
 	}
 
+	sendersWg.Add(1)
 	go func() {
 		defer func() {
 			close(buffer)
+			sendersWg.Done()
 		}()
 
 		if nilFunc {
@@ -526,6 +520,14 @@ func (p *Pipeline[T]) handleOptionFunc(
 				return
 			}
 		}
+	}()
+
+	// When all our workers exit, close downstream channels
+	go func() {
+		defer wg.Done()
+		sendersWg.Wait()
+		close(outChan)
+		close(errChan)
 	}()
 
 	return
