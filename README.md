@@ -83,7 +83,7 @@ Key properties:
 
 Options:
 
--   [Logging options](#insight)
+-   [Insight options](#insight)
 -   [Cancel options](#context--cancel)
 
 ---
