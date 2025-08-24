@@ -36,6 +36,7 @@ type PLConfig struct {
 	LogCount    bool
 	ReturnCount bool
 	LogStep     bool
+	LogErr      bool
 	ctx         context.Context
 }
 
@@ -72,6 +73,12 @@ func WithReturnCount() PLOption {
 func WithLogStep() PLOption {
 	return func(c *PLConfig) {
 		c.LogStep = true
+	}
+}
+
+func WithLogErr() PLOption {
+	return func(c *PLConfig) {
+		c.LogErr = true
 	}
 }
 
@@ -821,11 +828,11 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 			defer wg.Done()
 			for {
 				if err, ok := ReadOrDone(errChan, anyDone); ok {
+					if p.config.LogAll || p.config.LogErr {
+						fmt.Println(err)
+					}
 					// if a retry error, continue
 					if errors.Is(err, ErrWithRetry) {
-						if p.config.LogAll {
-							fmt.Println(err)
-						}
 						continue
 					}
 					if WriteOrDone(err, errBuff, anyDone) {

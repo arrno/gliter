@@ -274,7 +274,8 @@ Enable logging for debugging:
 
 -   `WithLogCount` — summary counts
 -   `WithLogEmit` — every emission
--   `WithLogAll` — both
+-   `WithLogErr` — errors
+-   `WithLogAll` — all above
 -   `WithLogStep` — interactive stepper
 
 ```go

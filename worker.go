@@ -7,66 +7,58 @@ import (
 )
 
 var (
-	ErrInvalidOperationNotRunning error = errors.New("workerPool invalid operation error: workerPool is not running")
-	ErrInvalidOperationRunning    error = errors.New("workerPool invalid operation error: workerPool is running")
-	ErrInvalidOperationHasRun     error = errors.New("workerPool invalid operation error: workerPool has already run")
+	ErrInvalidOperationNotRunning = errors.New("workerPool invalid operation error: workerPool is not running")
+	ErrInvalidOperationRunning    = errors.New("workerPool invalid operation error: workerPool is running")
+	ErrInvalidOperationHasRun     = errors.New("workerPool invalid operation error: workerPool has already run")
 )
 
 type WorkerConfig struct {
 	size   int
 	retry  int
-	buffer int
+	buffer int // used for input queue capacity
 }
 
 type Option func(*WorkerConfig)
 
 func WithRetry(attempts int) Option {
-	return func(c *WorkerConfig) {
-		c.retry = max(1, attempts)
-	}
+	return func(c *WorkerConfig) { c.retry = max(1, attempts) }
 }
-
 func WithBuffer(buffer int) Option {
-	return func(c *WorkerConfig) {
-		c.buffer = max(1, buffer)
-	}
+	return func(c *WorkerConfig) { c.buffer = max(1, buffer) }
 }
-
 func WithSize(size int) Option {
-	return func(c *WorkerConfig) {
-		c.size = max(1, size)
-	}
+	return func(c *WorkerConfig) { c.size = max(1, size) }
 }
 
 type WorkerPool[T, R any] struct {
-	mu           sync.Mutex
-	cfg          *WorkerConfig
-	queue        chan T
-	resultBuffer chan R
-	handler      func(val T) (R, error)
-	running      bool
-	hasRun       bool
-	results      []R
-	wg           sync.WaitGroup
-	errors       []error
+	mu      sync.Mutex
+	cfg     *WorkerConfig
+	queue   chan T
+	handler func(T) (R, error)
+
+	running bool
+	hasRun  bool
+
+	results []R
+	errors  []error
+
+	wg sync.WaitGroup // tracks worker goroutines
 }
 
-func NewWorkerPool[T, R any](size int, handler func(val T) (R, error), opts ...Option) *WorkerPool[T, R] {
-	cfg := &WorkerConfig{size, 1, size * 2}
+func NewWorkerPool[T, R any](size int, handler func(T) (R, error), opts ...Option) *WorkerPool[T, R] {
+	cfg := &WorkerConfig{size: size, retry: 1, buffer: size * 2}
 	for _, opt := range opts {
 		opt(cfg)
 	}
-	wp := WorkerPool[T, R]{
-		cfg:          cfg,
-		queue:        make(chan T, cfg.buffer),
-		resultBuffer: make(chan R, cfg.buffer),
-		results:      make([]R, 0, cfg.buffer),
-		handler:      handler,
-	}
-	wp.wg.Add(1)
-	return wp.Boot()
+	return (&WorkerPool[T, R]{
+		cfg:     cfg,
+		queue:   make(chan T, cfg.buffer),
+		results: make([]R, 0, cfg.buffer),
+		handler: handler,
+	}).Boot()
 }
 
+// Boot spawns workers.
 func (b *WorkerPool[T, R]) Boot() *WorkerPool[T, R] {
 	b.mu.Lock()
 	if b.running || b.hasRun {
@@ -77,40 +69,15 @@ func (b *WorkerPool[T, R]) Boot() *WorkerPool[T, R] {
 	b.running = true
 	b.mu.Unlock()
 
-	var wg sync.WaitGroup
-
 	for range b.cfg.size {
-		wg.Add(1)
+		b.wg.Add(1)
 		go func() {
-			defer wg.Done()
+			defer b.wg.Done()
 			for item := range b.queue {
 				b.doWork(item)
 			}
 		}()
 	}
-
-	go func() {
-		wg.Wait()
-		close(b.resultBuffer)
-	}()
-
-	go func() {
-		cache := make([]R, 0, b.cfg.buffer)
-		for result := range b.resultBuffer {
-			cache = append(cache, result)
-			if len(cache) >= b.cfg.buffer {
-				b.mu.Lock()
-				b.results = append(b.results, cache...)
-				b.mu.Unlock()
-				cache = make([]R, 0, b.cfg.buffer)
-			}
-		}
-		b.mu.Lock()
-		b.results = append(b.results, cache...)
-		b.mu.Unlock()
-		b.wg.Done()
-	}()
-
 	return b
 }
 
@@ -119,12 +86,16 @@ func (b *WorkerPool[T, R]) doWork(task T) {
 		result, err := b.handler(task)
 		if err != nil {
 			b.mu.Lock()
-			b.errors = append(b.errors, fmt.Errorf("work encountered err on attempt %d of %d. Err: %w", i+1, b.cfg.retry, err))
+			b.errors = append(b.errors, fmt.Errorf(
+				"work encountered err on attempt %d of %d: %w", i+1, b.cfg.retry, err))
 			b.mu.Unlock()
-		} else {
-			b.resultBuffer <- result
-			break
+			continue
 		}
+		// Single critical section, fast append.
+		b.mu.Lock()
+		b.results = append(b.results, result)
+		b.mu.Unlock()
+		break
 	}
 }
 
@@ -136,12 +107,14 @@ func (b *WorkerPool[T, R]) Push(items ...T) *WorkerPool[T, R] {
 		return b
 	}
 	b.mu.Unlock()
-	for _, item := range items {
-		b.queue <- item
+
+	for _, it := range items {
+		b.queue <- it
 	}
 	return b
 }
 
+// Close shuts down workers and waits for exit.
 func (b *WorkerPool[T, R]) Close() *WorkerPool[T, R] {
 	b.mu.Lock()
 	if !b.running {
@@ -162,27 +135,30 @@ func (b *WorkerPool[T, R]) IsErr() bool {
 	return len(b.errors) > 0
 }
 
-func (b *WorkerPool[T, R]) TakeErrors() (errors []error) {
+// TakeErrors clears and returns internal errors.
+func (b *WorkerPool[T, R]) TakeErrors() (errs []error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	errors = b.errors
+	errs = b.errors
 	b.errors = nil
 	return
 }
 
-func (b *WorkerPool[T, R]) TakeResults() (results []R) {
+// TakeResults clears and returns internal results.
+func (b *WorkerPool[T, R]) TakeResults() (res []R) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	results = b.results
+	res = b.results
 	b.results = nil
 	return
 }
 
-func (b *WorkerPool[T, R]) Collect() (results []R, errors []error) {
+// Collect clears and returns results and errors.
+func (b *WorkerPool[T, R]) Collect() (res []R, errs []error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	results = b.results
-	errors = b.errors
+	res = b.results
+	errs = b.errors
 	b.results = nil
 	b.errors = nil
 	return
