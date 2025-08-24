@@ -353,7 +353,8 @@ Includes `Filter`, `Map`, `Reduce`, `Find`, `Len`, `Reverse`, `At`, `Slice`, etc
 
 -   [Pre-built generators](./examples/generators)
 -   [Pipeline example](./examples/pipeline_example.go)
--   [Fan-out / Fan-in](./examples/pipeline_fan_out.go)
+-   [Pipeline with fan-out](./examples/pipeline_fan_out.go)
+-   [WorkerPool](./examples/worker_pool_example.go)
 -   [Benchmarks](https://github.com/arrno/benchmark-gliter)
 
 ---
