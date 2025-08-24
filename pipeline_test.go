@@ -513,6 +513,89 @@ func TestPipelineWorkerPool(t *testing.T) {
 	assert.Equal(t, expectedResults, results)
 }
 
+func TestPipelineWorkerPoolRetryRecover(t *testing.T) {
+	var mu sync.Mutex
+	results := make([]int, 0, 5)
+	counts, err := NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
+		WorkerPool(
+			func(item int) (int, error) {
+				return item * 2, nil
+			},
+			WithSize(3),
+			WithBuffer(10),
+			WithRetry(2),
+		).
+		WorkerPool(
+			makeExampleSpottyErr(), // should recover with retries
+			WithSize(1),            // func encloses over shared state that oscillates to produce error
+			WithBuffer(10),
+			WithRetry(2),
+		).
+		Stage(
+			func(i int) (int, error) {
+				mu.Lock()
+				results = append(results, i)
+				mu.Unlock()
+				return 0, nil
+			},
+		).
+		Run()
+
+	assert.Nil(t, err)
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i] < results[j]
+	})
+
+	expectedResults := []int{4, 8, 12, 16, 20}
+	expectedNodeIds := []string{
+		"GEN",
+		"0:0:0",
+		"1:0:0",
+		"2:0:0",
+	}
+
+	expectedNodeCounts := []int{5, 5, 5, 5}
+	resultNodeIds := make([]string, 4)
+	resultNodeCounts := make([]int, 4)
+
+	for i, count := range counts {
+		resultNodeIds[i] = count.NodeID
+		resultNodeCounts[i] = count.Count
+	}
+
+	assert.Equal(t, expectedNodeIds, resultNodeIds)
+	assert.Equal(t, expectedNodeCounts, resultNodeCounts)
+	assert.Equal(t, expectedResults, results)
+}
+
+func TestPipelineWorkerPoolRetryFail(t *testing.T) {
+	_, err := NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
+		WorkerPool(
+			func(item int) (int, error) {
+				return item * 2, nil
+			},
+			WithSize(3),
+			WithBuffer(10),
+			WithRetry(2),
+		).
+		WorkerPool(
+			makeExampleSpottyErr(),
+			WithSize(2),
+			WithBuffer(10),
+			WithRetry(1),
+		).
+		Run()
+
+	assert.NotNil(t, err)
+}
+
 func TestPipelineOptionErr(t *testing.T) {
 	_, exampleEnd := makeNoopEnd()
 	_, err := NewPipeline(exampleGen(5)).
@@ -941,4 +1024,18 @@ func exampleMidErr(i int) (int, error) {
 		return 0, errors.New("err")
 	}
 	return i * 2, nil
+}
+
+func makeExampleSpottyErr() func(i int) (int, error) {
+	var mu sync.Mutex
+	idx := -1
+	return func(i int) (int, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		idx++
+		if idx%2 == 0 {
+			return 0, errors.New("err")
+		}
+		return i * 2, nil
+	}
 }

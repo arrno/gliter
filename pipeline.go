@@ -25,6 +25,8 @@ var (
 	ErrInvalidThrottle error = errors.New("pipeline run error: invalid throttle: throttle value cannot be higher than channel count")
 	ErrNilFunc         error = errors.New("pipeline run error: invalid stage: Nil function")
 	ErrContextCanceled error = errors.New("pipeline run error: context canceled")
+	ErrWithRetry       error = errors.New("job run error: Handler returned error, will retry")
+	ErrWithoutRetry    error = errors.New("job run error: Handler returned error")
 )
 
 // PLConfig controls limited pipeline behavior.
@@ -461,17 +463,17 @@ func (p *Pipeline[T]) handleOptionFunc(
 					// handle with retry
 					for i := range cfg.retry {
 						result, err = handler(val)
-						if err != nil {
-							if !WriteOrDone(
-								fmt.Errorf("work encountered err on attempt %d of %d. Err: %w", i+1, cfg.retry, err),
-								errChan,
-								done,
-							) {
-								return
-							}
-							continue // retry
+						if err == nil {
+							break
 						}
-						break // err is nil
+						if i == (cfg.retry - 1) {
+							err = fmt.Errorf("%w. error on attempt %d of %d. Err: %w", ErrWithoutRetry, i+1, cfg.retry, err)
+						} else {
+							err = fmt.Errorf("%w. error on attempt %d of %d. Err: %w", ErrWithRetry, i+1, cfg.retry, err)
+						}
+						if !WriteOrDone(err, errChan, done) {
+							return
+						}
 					}
 
 					if err != nil { // error remains after retries
@@ -817,11 +819,22 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err, ok := ReadOrDone(errChan, anyDone); ok {
-				if WriteOrDone(err, errBuff, anyDone) {
-					// Will only reach once since err buffer has cap of 1
-					close(done)
+			for {
+				if err, ok := ReadOrDone(errChan, anyDone); ok {
+					// if a retry error, continue
+					if errors.Is(err, ErrWithRetry) {
+						if p.config.LogAll {
+							fmt.Println(err)
+						}
+						continue
+					}
+					if WriteOrDone(err, errBuff, anyDone) {
+						// Will only reach once since err buffer has cap of 1
+						close(done)
+					}
+					break // exit
 				}
+				break
 			}
 		}()
 	}
