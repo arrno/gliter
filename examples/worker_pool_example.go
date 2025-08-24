@@ -29,14 +29,14 @@ func periodic() {
 		return fmt.Sprintf("Got %d", val), nil
 	}
 
-	b := gliter.NewWorkerPool(3, handler, gliter.WithBuffer(6)) // make and spawn
+	p := gliter.NewWorkerPool(3, handler, gliter.WithBuffer(6)) // make and spawn
 
 	// - RUN -
 	for range 10 {
-		b.Push(0, 1, 2, 3)
+		p.Push(0, 1, 2, 3)
 		time.Sleep(100 * time.Millisecond)
 		// periodically check/drain worker state
-		results, errors := b.Collect()
+		results, errors := p.Collect()
 		if errors != nil {
 			panic(errors)
 		}
@@ -44,7 +44,7 @@ func periodic() {
 	}
 
 	// - CLOSE -
-	results, errors := b.Close().Collect() // waits for remaining work to complete
+	results, errors := p.Close().Collect() // waits for remaining work to complete
 	if errors != nil {
 		panic(errors)
 	}

@@ -9,47 +9,47 @@ import (
 )
 
 func TestWorker(t *testing.T) {
-	b := NewWorkerPool(3, func(val int) (string, error) {
+	p := NewWorkerPool(3, func(val int) (string, error) {
 		return fmt.Sprintf("Got %d", val), nil
 	})
 
 	for range 10 {
-		b.Push(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+		p.Push(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
 	}
-	b.Close()
+	p.Close()
 
-	assert.False(t, b.IsErr())
-	results, errors := b.Collect()
+	assert.False(t, p.IsErr())
+	results, errors := p.Collect()
 	assert.Nil(t, errors)
 	assert.Equal(t, 100, len(results))
 }
 
 func TestWorkerErrors(t *testing.T) {
-	b := NewWorkerPool(3, func(val int) (string, error) {
+	p := NewWorkerPool(3, func(val int) (string, error) {
 		return "", errors.New("oh no")
 	})
 
 	for range 10 {
-		b.Push(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+		p.Push(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
 	}
-	b.Close()
+	p.Close()
 
-	assert.True(t, b.IsErr())
-	errors := b.TakeErrors()
+	assert.True(t, p.IsErr())
+	errors := p.TakeErrors()
 	assert.Equal(t, 100, len(errors))
 }
 
 func TestWorkerOptions(t *testing.T) {
-	b := NewWorkerPool(3, func(val int) (string, error) {
+	p := NewWorkerPool(3, func(val int) (string, error) {
 		return "", errors.New("oh no")
 	}, WithBuffer(10), WithRetry(2))
 
 	for range 10 {
-		b.Push(0, 1, 2)
+		p.Push(0, 1, 2)
 	}
-	b.Close()
+	p.Close()
 
-	assert.True(t, b.IsErr())
-	errors := b.TakeErrors()
+	assert.True(t, p.IsErr())
+	errors := p.TakeErrors()
 	assert.Equal(t, 60, len(errors))
 }
