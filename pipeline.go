@@ -16,6 +16,7 @@ const (
 	BUFFER
 	MERGE
 	OPTION
+	FAN_OUT
 )
 
 var (
@@ -206,6 +207,18 @@ func (p *Pipeline[T]) WorkerPool(f func(data T) (T, error), opts ...Option) *Pip
 	return p
 }
 
+// MixPool is a WorkerPool with heterogeneous processing
+func (p *Pipeline[T]) MixPool(funcs []func(data T) (T, error), opts ...Option) *Pipeline[T] {
+	cfg := &WorkerConfig{1, 1, 2}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	p.optionForks[len(p.stages)] = funcs
+	p.stageConfigs[len(p.stages)] = cfg
+	p.stages = append(p.stages, stage[T]{stageType: OPTION, handlers: make([]func(data T) (T, error), 1)})
+	return p
+}
+
 func (p *Pipeline[T]) Config(config PLConfig) *Pipeline[T] {
 	p.config = &config
 	if p.config.ctx == nil {
@@ -218,6 +231,29 @@ func (p *Pipeline[T]) handleLog(val T) {
 	if p.config.LogAll || p.config.LogEmit {
 		fmt.Printf("Emit -> %v\n", val)
 	}
+}
+
+func withRetry[T any](
+	retry uint,
+	handler func() (T, error),
+	errChan chan<- (error),
+	done <-chan any,
+) (result T, err error) {
+	for i := range retry {
+		result, err = handler()
+		if err == nil {
+			break
+		}
+		if i == (retry - 1) {
+			err = fmt.Errorf("%w. error on attempt %d of %d. Err: %w", ErrWithoutRetry, i+1, retry, err)
+		} else {
+			err = fmt.Errorf("%w. error on attempt %d of %d. Err: %w", ErrWithRetry, i+1, retry, err)
+		}
+		if !WriteOrDone(err, errChan, done) {
+			return
+		}
+	}
+	return
 }
 
 func (p *Pipeline[T]) handleBufferFunc(
@@ -329,6 +365,129 @@ func (p *Pipeline[T]) handleStageFunc(
 			}
 		}
 	}()
+	return
+}
+
+func (p *Pipeline[T]) handleFanOutFunc(
+	id string,
+	inChan <-chan T,
+	index int,
+	done <-chan interface{},
+	wg *sync.WaitGroup,
+	stepSignal chan<- any,
+	stepDone <-chan any,
+) (outChan chan T, errChan chan error, node *PLNode[T]) {
+
+	var internalWg sync.WaitGroup
+
+	wg.Add(1)
+	errChan = make(chan error)
+	outChan = make(chan T)
+
+	var val T
+	node = NewPLNodeAs(id, val)
+	keepCount := p.config.keepCount()
+
+	if stepDone != nil {
+		done = Any(done, stepDone)
+	}
+
+	optionFuncs := p.optionForks[index]
+	cfg := p.stageConfigs[index]
+
+	if cfg == nil {
+		cfg = &WorkerConfig{
+			size:   len(optionFuncs),
+			buffer: len(optionFuncs),
+			retry:  1,
+		}
+	}
+
+	buffer := make(chan T, cfg.buffer)
+
+	// TODO where does this come from?
+	mergeFunc := func(vals []T) (T, error) {
+		fmt.Println(vals)
+		var x T
+		return x, nil
+	}
+
+	internalWg.Add(1)
+	go func() {
+		defer func() {
+			internalWg.Done()
+		}()
+
+		for {
+			if val, ok := ReadOrDone(buffer, done); ok {
+				funcs := make([]func() (T, error), len(optionFuncs))
+				for i, f := range optionFuncs {
+					funcs[i] = func() (T, error) {
+						return withRetry(uint(cfg.retry), func() (T, error) {
+							return f(val)
+						}, errChan, done)
+					}
+				}
+				results, err := InParallel(funcs)
+				if err != nil {
+					WriteOrDone(err, errChan, done)
+					return
+				}
+				merged, err := mergeFunc(results)
+				if err != nil {
+					WriteOrDone(err, errChan, done)
+					return
+				}
+
+				if keepCount {
+					node.IncAs(merged)
+				}
+				if stepSignal != nil {
+					var T any
+					if !WriteOrDone(T, stepSignal, done) {
+						return
+					}
+				}
+				if !WriteOrDone(merged, outChan, done) {
+					return
+				}
+			} else {
+				return
+			}
+		}
+	}()
+
+	// buffer
+	internalWg.Add(1)
+	go func() {
+		defer internalWg.Done()
+		defer close(buffer)
+
+		for _, f := range optionFuncs {
+			if f == nil {
+				WriteOrDone(ErrNilFunc, errChan, done)
+				return
+			}
+		}
+
+		for {
+			val, ok := ReadOrDone(inChan, done)
+			if !ok {
+				return
+			}
+			if !WriteOrDone(val, buffer, done) {
+				return
+			}
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		internalWg.Wait()
+		close(outChan)
+		close(errChan)
+	}()
+
 	return
 }
 
@@ -464,24 +623,14 @@ func (p *Pipeline[T]) handleOptionFunc(
 			defer sendersWg.Done()
 			for {
 				if val, ok := ReadOrDone(buffer, done); ok {
-					var result T
-					var err error
-
-					// handle with retry
-					for i := range cfg.retry {
-						result, err = handler(val)
-						if err == nil {
-							break
-						}
-						if i == (cfg.retry - 1) {
-							err = fmt.Errorf("%w. error on attempt %d of %d. Err: %w", ErrWithoutRetry, i+1, cfg.retry, err)
-						} else {
-							err = fmt.Errorf("%w. error on attempt %d of %d. Err: %w", ErrWithRetry, i+1, cfg.retry, err)
-						}
-						if !WriteOrDone(err, errChan, done) {
-							return
-						}
-					}
+					result, err := withRetry(
+						uint(cfg.retry),
+						func() (T, error) {
+							return handler(val)
+						},
+						errChan,
+						done,
+					)
 
 					if err != nil { // error remains after retries
 						return
@@ -789,6 +938,16 @@ func (p *Pipeline[T]) Run() ([]PLNodeCount, error) {
 					)
 				} else if stage.stageType == OPTION {
 					outChan, errChan, node = p.handleOptionFunc(
+						fmt.Sprintf("%d:%d:%d", idx, j, i),
+						forkOut[i],
+						idx,
+						anyDone,
+						&wg,
+						stepSignal,
+						stepDone,
+					)
+				} else if stage.stageType == FAN_OUT {
+					outChan, errChan, node = p.handleFanOutFunc(
 						fmt.Sprintf("%d:%d:%d", idx, j, i),
 						forkOut[i],
 						idx,
