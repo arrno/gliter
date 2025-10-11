@@ -452,6 +452,33 @@ func TestPipelineForkOutIn(t *testing.T) {
 	})
 	assert.True(t, reflect.DeepEqual(expected, actual))
 	assert.Equal(t, 5, counts[len(counts)-1].Count)
+
+	// With no merge
+	col, exampleEnd = makeNoopEnd()
+	counts, err = NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
+		ForkOutIn(
+			[]func(int) (int, error){
+				func(item int) (int, error) { return item + 1, nil },
+				func(item int) (int, error) { return item + 10, nil },
+				func(item int) (int, error) { return item + 100, nil },
+			},
+			nil,
+		).
+		Stage(exampleEnd).
+		Run()
+
+	assert.Nil(t, err)
+	expected = []int{2, 3, 4, 5, 6, 11, 12, 13, 14, 15, 101, 102, 103, 104, 105}
+
+	actual = col.items
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i] < actual[j]
+	})
+	assert.True(t, reflect.DeepEqual(expected, actual))
+	assert.Equal(t, 15, counts[len(counts)-1].Count)
 }
 
 func TestPipelineMergeErr(t *testing.T) {

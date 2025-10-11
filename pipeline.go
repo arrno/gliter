@@ -419,7 +419,11 @@ func (p *Pipeline[T]) handleFanOutFunc(
 	buffer := make(chan T, cfg.buffer)
 
 	mergeFunc := p.merges[index]
-	mergeIsNil := mergeFunc == nil
+	if mergeFunc == nil {
+		mergeFunc = func(val []T) ([]T, error) {
+			return val, nil
+		}
+	}
 
 	internalWg.Add(1)
 	go func() {
@@ -476,11 +480,6 @@ func (p *Pipeline[T]) handleFanOutFunc(
 	go func() {
 		defer internalWg.Done()
 		defer close(buffer)
-
-		if mergeIsNil {
-			WriteOrDone(ErrNilFunc, errChan, done)
-			return
-		}
 		for _, f := range optionFuncs {
 			if f == nil {
 				WriteOrDone(ErrNilFunc, errChan, done)
