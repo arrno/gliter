@@ -627,7 +627,7 @@ func TestPipelineMixPool(t *testing.T) {
 	assert.Equal(t, expectedResults, results)
 }
 
-func TestPipelineWorkerPool(t *testing.T) {
+func TestPipelineWorkPool(t *testing.T) {
 	var mu sync.Mutex
 	results := make([]int, 0, 5)
 	counts, err := NewPipeline(
@@ -644,19 +644,19 @@ func TestPipelineWorkerPool(t *testing.T) {
 				return item, nil
 			},
 		).
-		WorkerPool(
+		WorkPool(
 			func(item int) (int, error) {
 				return item * 2, nil
 			},
-			WithSize(3),
+			3,
 			WithBuffer(10),
 			WithRetry(2),
 		).
-		WorkerPool(
+		WorkPool(
 			func(item int) (int, error) {
 				return item * 2, nil
 			},
-			WithSize(2),
+			2,
 			WithBuffer(10),
 			WithRetry(2),
 		).
@@ -703,24 +703,24 @@ func TestPipelineWorkerPool(t *testing.T) {
 	assert.Equal(t, expectedResults, results)
 }
 
-func TestPipelineWorkerPoolRetryRecover(t *testing.T) {
+func TestPipelineWorkPoolRetryRecover(t *testing.T) {
 	var mu sync.Mutex
 	results := make([]int, 0, 5)
 	counts, err := NewPipeline(
 		exampleGen(5),
 		WithReturnCount(),
 	).
-		WorkerPool(
+		WorkPool(
 			func(item int) (int, error) {
 				return item * 2, nil
 			},
-			WithSize(3),
+			3,
 			WithBuffer(10),
 			WithRetry(2),
 		).
-		WorkerPool(
+		WorkPool(
 			makeExampleSpottyErr(), // should recover with retries
-			WithSize(1),            // func encloses over shared state that oscillates to produce error
+			1,                      // func encloses over shared state that oscillates to produce error
 			WithBuffer(10),
 			WithRetry(2),
 		).
@@ -762,22 +762,22 @@ func TestPipelineWorkerPoolRetryRecover(t *testing.T) {
 	assert.Equal(t, expectedResults, results)
 }
 
-func TestPipelineWorkerPoolRetryFail(t *testing.T) {
+func TestPipelineWorkPoolRetryFail(t *testing.T) {
 	_, err := NewPipeline(
 		exampleGen(5),
 		WithReturnCount(),
 	).
-		WorkerPool(
+		WorkPool(
 			func(item int) (int, error) {
 				return item * 2, nil
 			},
-			WithSize(3),
+			3,
 			WithBuffer(10),
 			WithRetry(2),
 		).
-		WorkerPool(
+		WorkPool(
 			makeExampleSpottyErr(),
-			WithSize(2),
+			2,
 			WithBuffer(10),
 			WithRetry(1),
 		).

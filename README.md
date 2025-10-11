@@ -31,7 +31,7 @@ import "github.com/arrno/gliter"
 -   [Overview](#overview)
 -   [Pipeline](#pipeline)
     -   [Fork](#fork)
-    -   [WorkerPool](#workerpool-stage)
+    -   [WorkPool](#workpool-stage)
     -   [MixPool](#mixpool)
     -   [Throttle](#throttle)
     -   [Merge](#merge)
@@ -109,18 +109,17 @@ gliter.NewPipeline(exampleGen()).
 👉 Each downstream stage is duplicated for each branch.  
 ⚠️ If processing pointers, clone before mutating downstream.
 
-For branching without duplicating streams, use [`WorkerPool Stage`](#workerpool-stage), [`Option Stage`](#option), or [`InParallel`](#inparallel).
+For branching without duplicating streams, use [`WorkPool Stage`](#workpool-stage), [`Option Stage`](#option), or [`InParallel`](#inparallel).
 
 ---
 
-### WorkerPool Stage
+### WorkPool Stage
 
 Fans out a handler function into `N` concurrent workers.  
 Each record is processed by exactly one worker (no cloning or duplication), then multiplexed onto the single downstream stream.
 
 Configure behavior with options:
 
--   `WithSize(N)` → number of workers to spawn
 -   `WithBuffer(M)` → buffered channel capacity between upstream and workers
 -   `WithRetry(R)` → automatic retries on failure
 
@@ -128,15 +127,15 @@ Allows fine-grained control over throughput, backpressure, and fault tolerance.
 
 ```go
 gliter.NewPipeline(exampleGen()).
-    WorkerPool(
+    WorkPool(
         func(item int) (int, error) { return 1 + item, nil },
-        WithSize(3),
+        3, // numWorkers
         WithBuffer(6),
         WithRetry(2),
     ).
-    WorkerPool(
+    WorkPool(
         func(item int) (int, error) { return 2 + item, nil },
-        WithSize(6),
+        6, // numWorkers
         WithBuffer(12),
         WithRetry(2),
     ).
@@ -148,7 +147,7 @@ gliter.NewPipeline(exampleGen()).
 ### MixPool
 
 Use when a worker pool needs distinct handlers but you still want automatic backpressure.  
-It's a convenience wrapper around `WorkerPool`: pass a slice of handlers and Gliter will fan the stream across them while keeping worker semantics.
+It's a convenience wrapper around `WorkPool`: pass a slice of handlers and Gliter will fan the stream across them while keeping worker semantics.
 
 ```go
 gliter.NewPipeline(exampleGen()).
@@ -160,8 +159,6 @@ gliter.NewPipeline(exampleGen()).
     ).
     Run()
 ```
-
-`WithSize` is ignored here (each handler is its own worker), but buffering and retry options still apply.
 
 ---
 
