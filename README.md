@@ -35,7 +35,7 @@ import "github.com/arrno/gliter"
     -   [MixPool](#mixpool)
     -   [Throttle](#throttle)
     -   [Merge](#merge)
-    -   [FanOutIn](#fanoutin)
+    -   [ForkOutIn](#ForkOutIn)
     -   [Batch](#batch)
     -   [Option](#option)
     -   [Buffer](#buffer)
@@ -200,14 +200,14 @@ gliter.NewPipeline(exampleGen()).
 
 ---
 
-### FanOutIn
+### ForkOutIn
 
 Shortcut for "fork, do a little work, then merge" flows.  
 Under the hood it's just a `Fork` followed by `Merge`, so keep it brief for small aggregations.
 
 ```go
 gliter.NewPipeline(exampleGen()).
-    FanOutIn(
+    ForkOutIn(
         []func(int) (int, error){
             func(item int) (int, error) { return item + 1, nil },
             func(item int) (int, error) { return item - 1, nil },

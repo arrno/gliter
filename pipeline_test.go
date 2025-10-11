@@ -372,7 +372,7 @@ func TestPipelineMerge(t *testing.T) {
 	assert.Equal(t, 5, counts[len(counts)-1].Count)
 }
 
-func TestPipelineFanOutIn(t *testing.T) {
+func TestPipelineForkOutIn(t *testing.T) {
 	col, exampleEnd := makeNoopEnd()
 	counts, err := NewPipeline(
 		exampleGen(5),
@@ -382,7 +382,7 @@ func TestPipelineFanOutIn(t *testing.T) {
 			exampleMid, // branch A
 			exampleMid, // branch B
 		).
-		FanOutIn(
+		ForkOutIn(
 			[]func(int) (int, error){
 				func(item int) (int, error) { return item + 1, nil },
 				func(item int) (int, error) { return item + 10, nil },
@@ -426,7 +426,7 @@ func TestPipelineFanOutIn(t *testing.T) {
 		exampleGen(5),
 		WithReturnCount(),
 	).
-		FanOutIn(
+		ForkOutIn(
 			[]func(int) (int, error){
 				func(item int) (int, error) { return item + 1, nil },
 				func(item int) (int, error) { return item + 10, nil },

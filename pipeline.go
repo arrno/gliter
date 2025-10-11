@@ -219,8 +219,8 @@ func (p *Pipeline[T]) MixPool(funcs []func(data T) (T, error), opts ...Option) *
 	return p
 }
 
-// FanOutIn is a Fork and Merge stage combined
-func (p *Pipeline[T]) FanOutIn(funcs []func(data T) (T, error), merge func([]T) ([]T, error), opts ...Option) *Pipeline[T] {
+// ForkOutIn is a Fork and Merge stage combined
+func (p *Pipeline[T]) ForkOutIn(funcs []func(data T) (T, error), merge func([]T) ([]T, error), opts ...Option) *Pipeline[T] {
 	cfg := &WorkerConfig{1, 1, 2}
 	for _, opt := range opts {
 		opt(cfg)
