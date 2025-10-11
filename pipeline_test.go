@@ -372,6 +372,88 @@ func TestPipelineMerge(t *testing.T) {
 	assert.Equal(t, 5, counts[len(counts)-1].Count)
 }
 
+func TestPipelineFanOutIn(t *testing.T) {
+	col, exampleEnd := makeNoopEnd()
+	counts, err := NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
+		Stage(
+			exampleMid, // branch A
+			exampleMid, // branch B
+		).
+		FanOutIn(
+			[]func(int) (int, error){
+				func(item int) (int, error) { return item + 1, nil },
+				func(item int) (int, error) { return item + 10, nil },
+				func(item int) (int, error) { return item + 100, nil },
+			},
+			func(data []int) ([]int, error) {
+				sum := 0
+				for _, n := range data {
+					sum += n
+				}
+				return []int{sum}, nil
+			},
+		).
+		Stage(exampleEnd).
+		Run()
+	// 1, 2, 3, 4, 5
+	// 4, 8, 12, 16, 20
+	assert.Nil(t, err)
+	expected := []int{
+		117,
+		117,
+		123,
+		123,
+		129,
+		129,
+		135,
+		135,
+		141,
+		141,
+	}
+	actual := col.items
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i] < actual[j]
+	})
+	assert.True(t, reflect.DeepEqual(expected, actual))
+	assert.Equal(t, 5, counts[len(counts)-1].Count)
+
+	// With no forking
+	col, exampleEnd = makeNoopEnd()
+	counts, err = NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
+		FanOutIn(
+			[]func(int) (int, error){
+				func(item int) (int, error) { return item + 1, nil },
+				func(item int) (int, error) { return item + 10, nil },
+				func(item int) (int, error) { return item + 100, nil },
+			},
+			func(items []int) ([]int, error) {
+				sum := 0
+				for _, item := range items {
+					sum += item
+				}
+				return []int{sum}, nil
+			},
+		).
+		Stage(exampleEnd).
+		Run()
+
+	assert.Nil(t, err)
+	expected = []int{114, 117, 120, 123, 126}
+
+	actual = col.items
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i] < actual[j]
+	})
+	assert.True(t, reflect.DeepEqual(expected, actual))
+	assert.Equal(t, 5, counts[len(counts)-1].Count)
+}
+
 func TestPipelineMergeErr(t *testing.T) {
 	_, exampleEnd := makeNoopEnd()
 	_, err := NewPipeline(exampleGen(5)).
@@ -435,6 +517,87 @@ func TestPipelineOption(t *testing.T) {
 	}
 	assert.Equal(t, expectedNodeIds, resultNodeIds)
 	assert.Equal(t, expectedNodeCounts, resultNodeCounts)
+}
+
+func TestPipelineMixPool(t *testing.T) {
+	var mu sync.Mutex
+	results := make([]int, 0, 5)
+	funcs := []func(item int) (int, error){
+		func(item int) (int, error) {
+			return item * 2, nil
+		},
+		func(item int) (int, error) {
+			return item * 2, nil
+		},
+		func(item int) (int, error) {
+			return item * 2, nil
+		},
+	}
+	counts, err := NewPipeline(
+		exampleGen(5),
+		WithReturnCount(),
+	).
+		Stage(
+			// branch A
+			func(item int) (int, error) {
+				return item, nil
+			},
+			// branch B
+			func(item int) (int, error) {
+				return item, nil
+			},
+		).
+		MixPool(
+			funcs,
+			WithBuffer(10),
+			WithRetry(2),
+		).
+		MixPool(
+			funcs,
+			WithBuffer(10),
+			WithRetry(2),
+		).
+		Stage(
+			func(i int) (int, error) {
+				mu.Lock()
+				results = append(results, i)
+				mu.Unlock()
+				return 0, nil
+			},
+		).
+		Run()
+
+	assert.Nil(t, err)
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i] < results[j]
+	})
+
+	expectedResults := []int{4, 4, 8, 8, 12, 12, 16, 16, 20, 20}
+	expectedNodeIds := []string{
+		"GEN",
+		"0:0:0",
+		"0:0:1",
+		"1:0:0",
+		"1:1:0",
+		"2:0:0",
+		"2:1:0",
+		"3:0:0",
+		"3:1:0",
+	}
+
+	expectedNodeCounts := []int{5, 5, 5, 5, 5, 5, 5, 5, 5}
+	resultNodeIds := make([]string, 9)
+	resultNodeCounts := make([]int, 9)
+
+	for i, count := range counts {
+		resultNodeIds[i] = count.NodeID
+		resultNodeCounts[i] = count.Count
+	}
+
+	assert.Equal(t, expectedNodeIds, resultNodeIds)
+	assert.Equal(t, expectedNodeCounts, resultNodeCounts)
+	assert.Equal(t, expectedResults, results)
 }
 
 func TestPipelineWorkerPool(t *testing.T) {

@@ -1,7 +1,9 @@
 # Gliter ✨
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/arrno/gliter.svg)](https://pkg.go.dev/github.com/arrno/gliter)  
+[![Go Reference](https://pkg.go.dev/badge/github.com/arrno/gliter.svg)](https://pkg.go.dev/github.com/arrno/gliter)
 [![Go Build](https://github.com/arrno/gliter/actions/workflows/go.yml/badge.svg)](https://github.com/arrno/gliter/actions/workflows/go.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/arrno/gliter)](https://goreportcard.com/report/github.com/arrno/gliter)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > **Composable async & concurrency patterns for Go.**  
 > Write pipelines, worker pools, and async utilities without worrying about race conditions, deadlocks, or goroutine leaks.
@@ -30,8 +32,10 @@ import "github.com/arrno/gliter"
 -   [Pipeline](#pipeline)
     -   [Fork](#fork)
     -   [WorkerPool](#workerpool-stage)
+    -   [MixPool](#mixpool)
     -   [Throttle](#throttle)
     -   [Merge](#merge)
+    -   [FanOutIn](#fanoutin)
     -   [Batch](#batch)
     -   [Option](#option)
     -   [Buffer](#buffer)
@@ -112,7 +116,7 @@ For branching without duplicating streams, use [`WorkerPool Stage`](#workerpool-
 ### WorkerPool Stage
 
 Fans out a handler function into `N` concurrent workers.  
-Each record is processed by exactly one worker (no cloning or duplication).
+Each record is processed by exactly one worker (no cloning or duplication), then multiplexed onto the single downstream stream.
 
 Configure behavior with options:
 
@@ -138,6 +142,26 @@ gliter.NewPipeline(exampleGen()).
     ).
     Run()
 ```
+
+---
+
+### MixPool
+
+Use when a worker pool needs distinct handlers but you still want automatic backpressure.  
+It's a convenience wrapper around `WorkerPool`: pass a slice of handlers and Gliter will fan the stream across them while keeping worker semantics.
+
+```go
+gliter.NewPipeline(exampleGen()).
+    MixPool([]func(int) (int, error){
+        func(item int) (int, error) { return item + 1, nil },
+        func(item int) (int, error) { return item * 2, nil },
+    },
+        WithRetry(1),
+    ).
+    Run()
+```
+
+`WithSize` is ignored here (each handler is its own worker), but buffering and retry options still apply.
 
 ---
 
@@ -173,6 +197,27 @@ gliter.NewPipeline(exampleGen()).
     Stage(exampleEnd).
     Run()
 ```
+
+---
+
+### FanOutIn
+
+Shortcut for "fork, do a little work, then merge" flows.  
+Under the hood it's just a `Fork` followed by `Merge`, so keep it brief for small aggregations.
+
+```go
+gliter.NewPipeline(exampleGen()).
+    FanOutIn(
+        []func(int) (int, error){
+            func(item int) (int, error) { return item + 1, nil },
+            func(item int) (int, error) { return item - 1, nil },
+        },
+        func(items []int) ([]int, error) { return []int{items[0] - items[1]}, nil },
+    ).
+    Run()
+```
+
+Stick with the dedicated `Fork`/`Merge` stages when you need more complex fan-out trees.
 
 ---
 
