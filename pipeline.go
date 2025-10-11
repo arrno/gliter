@@ -431,10 +431,12 @@ func (p *Pipeline[T]) handleFanOutFunc(
 
 		for {
 			if val, ok := ReadOrDone(buffer, done); ok {
+				current := val
 				for i, f := range optionFuncs {
+					handler := f
 					funcs[i] = func() (T, error) {
 						return withRetry(uint(cfg.retry), func() (T, error) {
-							return f(val)
+							return handler(current)
 						}, errChan, done)
 					}
 				}

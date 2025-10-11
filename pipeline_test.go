@@ -383,23 +383,17 @@ func TestPipelineFanOutIn(t *testing.T) {
 			exampleMid, // branch B
 		).
 		FanOutIn(
-			// Fan out
 			[]func(int) (int, error){
-				exampleMid, // branches A.C, B.C
-				exampleMid, // branches A.D, B.D
-				exampleMid, // branches A.E, B.E
+				func(item int) (int, error) { return item + 1, nil },
+				func(item int) (int, error) { return item + 10, nil },
+				func(item int) (int, error) { return item + 100, nil },
 			},
-			// Fan in
 			func(data []int) ([]int, error) {
-				str := ""
+				sum := 0
 				for _, n := range data {
-					str += string([]rune(fmt.Sprintf("%d", n))[0])
+					sum += n
 				}
-				i, err := strconv.ParseInt(str, 10, 64)
-				if err != nil {
-					return nil, err
-				}
-				return []int{int(i)}, nil
+				return []int{sum}, nil
 			},
 		).
 		Stage(exampleEnd).
@@ -408,16 +402,16 @@ func TestPipelineFanOutIn(t *testing.T) {
 	// 4, 8, 12, 16, 20
 	assert.Nil(t, err)
 	expected := []int{
-		111,
-		111,
-		111,
-		111,
-		222,
-		222,
-		444,
-		444,
-		888,
-		888,
+		117,
+		117,
+		123,
+		123,
+		129,
+		129,
+		135,
+		135,
+		141,
+		141,
 	}
 	actual := col.items
 	sort.Slice(actual, func(i, j int) bool {
@@ -433,11 +427,11 @@ func TestPipelineFanOutIn(t *testing.T) {
 		WithReturnCount(),
 	).
 		FanOutIn(
-			// Fan out
 			[]func(int) (int, error){
-				exampleMid, // branch A
+				func(item int) (int, error) { return item + 1, nil },
+				func(item int) (int, error) { return item + 10, nil },
+				func(item int) (int, error) { return item + 100, nil },
 			},
-			// Fan in
 			func(items []int) ([]int, error) {
 				sum := 0
 				for _, item := range items {
@@ -450,7 +444,7 @@ func TestPipelineFanOutIn(t *testing.T) {
 		Run()
 
 	assert.Nil(t, err)
-	expected = []int{2, 4, 6, 8, 10}
+	expected = []int{114, 117, 120, 123, 126}
 
 	actual = col.items
 	sort.Slice(actual, func(i, j int) bool {
