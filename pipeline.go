@@ -146,6 +146,11 @@ func (p *Pipeline[T]) Stage(fs ...func(data T) (T, error)) *Pipeline[T] {
 	return p
 }
 
+// Fork is a more explicit alias for Stage
+func (p *Pipeline[T]) Fork(fs ...func(data T) (T, error)) *Pipeline[T] {
+	return p.Stage(fs...)
+}
+
 // Batch pushes a special batch stage onto the pipeline of size n. A batch allows you to operate on a set of items.
 // This is helpful for expensive operations such as DB writes.
 func (p *Pipeline[T]) Batch(n int, f func(set []T) ([]T, error)) *Pipeline[T] {
