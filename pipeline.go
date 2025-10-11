@@ -207,7 +207,7 @@ func (p *Pipeline[T]) WorkerPool(f func(data T) (T, error), opts ...Option) *Pip
 	return p
 }
 
-// MixPool is a WorkerPool with heterogeneous processing
+// MixPool is a WorkerPool with heterogeneous processing. Size option is noop for MixPool
 func (p *Pipeline[T]) MixPool(funcs []func(data T) (T, error), opts ...Option) *Pipeline[T] {
 	cfg := &WorkerConfig{1, 1, 2}
 	for _, opt := range opts {
