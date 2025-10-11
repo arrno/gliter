@@ -219,6 +219,19 @@ func (p *Pipeline[T]) MixPool(funcs []func(data T) (T, error), opts ...Option) *
 	return p
 }
 
+// FanOutIn is a Fork and Merge stage combined
+func (p *Pipeline[T]) FanOutIn(funcs []func(data T) (T, error), merge func([]T) ([]T, error), opts ...Option) *Pipeline[T] {
+	cfg := &WorkerConfig{1, 1, 2}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	p.merges[len(p.stages)] = merge
+	p.optionForks[len(p.stages)] = funcs
+	p.stageConfigs[len(p.stages)] = cfg
+	p.stages = append(p.stages, stage[T]{stageType: FAN_OUT, handlers: make([]func(data T) (T, error), 1)})
+	return p
+}
+
 func (p *Pipeline[T]) Config(config PLConfig) *Pipeline[T] {
 	p.config = &config
 	if p.config.ctx == nil {
@@ -405,12 +418,8 @@ func (p *Pipeline[T]) handleFanOutFunc(
 
 	buffer := make(chan T, cfg.buffer)
 
-	// TODO where does this come from?
-	mergeFunc := func(vals []T) (T, error) {
-		fmt.Println(vals)
-		var x T
-		return x, nil
-	}
+	mergeFunc := p.merges[index]
+	mergeIsNil := mergeFunc == nil
 
 	internalWg.Add(1)
 	go func() {
@@ -418,9 +427,10 @@ func (p *Pipeline[T]) handleFanOutFunc(
 			internalWg.Done()
 		}()
 
+		funcs := make([]func() (T, error), len(optionFuncs))
+
 		for {
 			if val, ok := ReadOrDone(buffer, done); ok {
-				funcs := make([]func() (T, error), len(optionFuncs))
 				for i, f := range optionFuncs {
 					funcs[i] = func() (T, error) {
 						return withRetry(uint(cfg.retry), func() (T, error) {
@@ -433,14 +443,14 @@ func (p *Pipeline[T]) handleFanOutFunc(
 					WriteOrDone(err, errChan, done)
 					return
 				}
-				merged, err := mergeFunc(results)
+				outSet, err := mergeFunc(results)
 				if err != nil {
 					WriteOrDone(err, errChan, done)
 					return
 				}
 
 				if keepCount {
-					node.IncAs(merged)
+					node.IncAsBatch(outSet)
 				}
 				if stepSignal != nil {
 					var T any
@@ -448,8 +458,10 @@ func (p *Pipeline[T]) handleFanOutFunc(
 						return
 					}
 				}
-				if !WriteOrDone(merged, outChan, done) {
-					return
+				for _, out := range outSet {
+					if !WriteOrDone(out, outChan, done) {
+						return
+					}
 				}
 			} else {
 				return
@@ -463,6 +475,10 @@ func (p *Pipeline[T]) handleFanOutFunc(
 		defer internalWg.Done()
 		defer close(buffer)
 
+		if mergeIsNil {
+			WriteOrDone(ErrNilFunc, errChan, done)
+			return
+		}
 		for _, f := range optionFuncs {
 			if f == nil {
 				WriteOrDone(ErrNilFunc, errChan, done)
