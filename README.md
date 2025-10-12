@@ -366,7 +366,7 @@ Supported WorkerPool Options:
 -   `WithRetry`
 -   `WithBuffer`
 
-See `./examples/worker_pool_example.go` for more.
+See `./examples/worker_pool/main.go` for more.
 
 ---
 
@@ -394,10 +394,11 @@ Includes `Filter`, `Map`, `Reduce`, `Find`, `Len`, `Reverse`, `At`, `Slice`, etc
 
 ## Examples
 
+-   [Latest demo](./examples/new/main.go)
 -   [Pre-built generators](./examples/generators)
--   [Pipeline example](./examples/pipeline_example.go)
--   [Pipeline with fan-out](./examples/pipeline_fan_out.go)
--   [WorkerPool](./examples/worker_pool_example.go)
+-   [Original pipeline example](./examples/original/pipeline_example.go)
+-   [Pipeline with fan-out](./examples/original/pipeline_fan_out.go)
+-   [WorkerPool](./examples/worker_pool/main.go)
 -   [Benchmarks](https://github.com/arrno/benchmark-gliter)
 
 ---
