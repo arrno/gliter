@@ -67,12 +67,12 @@ gliter.NewPipeline(streamTransactionsFromKafka).
     Stage(
         preprocessFeatures,
     ).
-    Stage(
+    Fork(
         runFraudModel,
         checkBusinessRules,
     ).
     Merge(aggregateResults).
-    Stage(
+    Fork(
         sendToAlertSystem,
         storeInDatabase,
     ).
@@ -94,11 +94,11 @@ Options:
 
 ### Fork
 
-Add multiple handlers in one stage to fork the pipeline:
+Add multiple handlers in one stage to fork the pipeline (Fork is an alias for Stage):
 
 ```go
 gliter.NewPipeline(exampleGen()).
-    Stage(
+    Fork(
         exampleMid, // branch A
         exampleAlt, // branch B
     ).
@@ -168,8 +168,8 @@ Control concurrency when downstream stages overwhelm your DB or API:
 
 ```go
 gliter.NewPipeline(exampleGen()).
-    Stage(exampleMid, exampleMid).
-    Stage(exampleMid, exampleMid, exampleMid).
+    Fork(exampleMid, exampleMid).
+    Fork(exampleMid, exampleMid, exampleMid).
     Throttle(2).
     Stage(exampleEnd).
     Run()
@@ -183,7 +183,7 @@ Combine multiple branches into one:
 
 ```go
 gliter.NewPipeline(exampleGen()).
-    Stage(exampleMid, exampleMid).
+    Fork(exampleMid, exampleMid).
     Merge(func(items []int) ([]int, error) {
         sum := 0
         for _, item := range items {
@@ -325,7 +325,7 @@ gliter.NewPipeline(
     exampleGen(),
     gliter.WithLogAll(),
 ).
-    Stage(exampleMid, exampleAlt).
+    Fork(exampleMid, exampleAlt).
     Stage(exampleEnd).
     Run()
 ```

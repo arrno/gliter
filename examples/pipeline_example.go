@@ -201,7 +201,7 @@ func ExampleMain() {
 
 	// Lastly, we assemble our pipeline stages, enable logging, and run the pipeline.
 	count, err := pipeline.
-		Stage(
+		Fork(
 			ConvertToCents,
 			ApplyEvenFee,
 		).
