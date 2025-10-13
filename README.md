@@ -396,8 +396,7 @@ Includes `Filter`, `Map`, `Reduce`, `Find`, `Len`, `Reverse`, `At`, `Slice`, etc
 
 -   [Latest demo](./examples/new/main.go)
 -   [Pre-built generators](./examples/generators)
--   [Original pipeline example](./examples/original/pipeline_example.go)
--   [Pipeline with fan-out](./examples/original/pipeline_fan_out.go)
+-   [Original pipeline examples](./examples/original)
 -   [WorkerPool](./examples/worker_pool/main.go)
 -   [Benchmarks](https://github.com/arrno/benchmark-gliter)
 
