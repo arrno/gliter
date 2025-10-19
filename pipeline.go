@@ -146,6 +146,11 @@ func (p *Pipeline[T]) Stage(fs ...func(data T) (T, error)) *Pipeline[T] {
 	return p
 }
 
+// Fork is a more explicit alias for Stage
+func (p *Pipeline[T]) Fork(fs ...func(data T) (T, error)) *Pipeline[T] {
+	return p.Stage(fs...)
+}
+
 // Batch pushes a special batch stage onto the pipeline of size n. A batch allows you to operate on a set of items.
 // This is helpful for expensive operations such as DB writes.
 func (p *Pipeline[T]) Batch(n int, f func(set []T) ([]T, error)) *Pipeline[T] {
@@ -196,6 +201,27 @@ func (p *Pipeline[T]) WorkerPool(f func(data T) (T, error), opts ...Option) *Pip
 	cfg := &WorkerConfig{1, 1, 2}
 	for _, opt := range opts {
 		opt(cfg)
+	}
+	funcs := make([]func(data T) (T, error), cfg.size)
+	for i := range cfg.size {
+		funcs[i] = f
+	}
+	p.optionForks[len(p.stages)] = funcs
+	p.stageConfigs[len(p.stages)] = cfg
+	p.stages = append(p.stages, stage[T]{stageType: OPTION, handlers: make([]func(data T) (T, error), 1)})
+	return p
+}
+
+// WorkPool is a wrapper around an Option stage that allows for more control. N workers are spawned
+// to wrap the given handler with B buffer and R retries where N is numWorkers, B is Option->Buffer,
+// and R is Option->Retry.
+func (p *Pipeline[T]) WorkPool(f func(data T) (T, error), numWorkers uint, opts ...Option) *Pipeline[T] {
+	cfg := &WorkerConfig{1, 1, 2}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	if numWorkers > 0 {
+		cfg.size = int(numWorkers)
 	}
 	funcs := make([]func(data T) (T, error), cfg.size)
 	for i := range cfg.size {

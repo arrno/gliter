@@ -31,7 +31,7 @@ import "github.com/arrno/gliter"
 -   [Overview](#overview)
 -   [Pipeline](#pipeline)
     -   [Fork](#fork)
-    -   [WorkerPool](#workerpool-stage)
+    -   [WorkPool](#workpool-stage)
     -   [MixPool](#mixpool)
     -   [Throttle](#throttle)
     -   [Merge](#merge)
@@ -67,12 +67,12 @@ gliter.NewPipeline(streamTransactionsFromKafka).
     Stage(
         preprocessFeatures,
     ).
-    Stage(
+    Fork(
         runFraudModel,
         checkBusinessRules,
     ).
     Merge(aggregateResults).
-    Stage(
+    Fork(
         sendToAlertSystem,
         storeInDatabase,
     ).
@@ -94,11 +94,11 @@ Options:
 
 ### Fork
 
-Add multiple handlers in one stage to fork the pipeline:
+Add multiple handlers in one stage to fork the pipeline (Fork is an alias for Stage):
 
 ```go
 gliter.NewPipeline(exampleGen()).
-    Stage(
+    Fork(
         exampleMid, // branch A
         exampleAlt, // branch B
     ).
@@ -109,18 +109,17 @@ gliter.NewPipeline(exampleGen()).
 👉 Each downstream stage is duplicated for each branch.  
 ⚠️ If processing pointers, clone before mutating downstream.
 
-For branching without duplicating streams, use [`WorkerPool Stage`](#workerpool-stage), [`Option Stage`](#option), or [`InParallel`](#inparallel).
+For branching without duplicating streams, use [`WorkPool Stage`](#workpool-stage), [`Option Stage`](#option), or [`InParallel`](#inparallel).
 
 ---
 
-### WorkerPool Stage
+### WorkPool Stage
 
 Fans out a handler function into `N` concurrent workers.  
 Each record is processed by exactly one worker (no cloning or duplication), then multiplexed onto the single downstream stream.
 
 Configure behavior with options:
 
--   `WithSize(N)` → number of workers to spawn
 -   `WithBuffer(M)` → buffered channel capacity between upstream and workers
 -   `WithRetry(R)` → automatic retries on failure
 
@@ -128,15 +127,15 @@ Allows fine-grained control over throughput, backpressure, and fault tolerance.
 
 ```go
 gliter.NewPipeline(exampleGen()).
-    WorkerPool(
+    WorkPool(
         func(item int) (int, error) { return 1 + item, nil },
-        WithSize(3),
+        3, // numWorkers
         WithBuffer(6),
         WithRetry(2),
     ).
-    WorkerPool(
+    WorkPool(
         func(item int) (int, error) { return 2 + item, nil },
-        WithSize(6),
+        6, // numWorkers
         WithBuffer(12),
         WithRetry(2),
     ).
@@ -148,7 +147,7 @@ gliter.NewPipeline(exampleGen()).
 ### MixPool
 
 Use when a worker pool needs distinct handlers but you still want automatic backpressure.  
-It's a convenience wrapper around `WorkerPool`: pass a slice of handlers and Gliter will fan the stream across them while keeping worker semantics.
+It's a convenience wrapper around `WorkPool`: pass a slice of handlers and Gliter will fan the stream across them while keeping worker semantics.
 
 ```go
 gliter.NewPipeline(exampleGen()).
@@ -161,8 +160,6 @@ gliter.NewPipeline(exampleGen()).
     Run()
 ```
 
-`WithSize` is ignored here (each handler is its own worker), but buffering and retry options still apply.
-
 ---
 
 ### Throttle
@@ -171,8 +168,8 @@ Control concurrency when downstream stages overwhelm your DB or API:
 
 ```go
 gliter.NewPipeline(exampleGen()).
-    Stage(exampleMid, exampleMid).
-    Stage(exampleMid, exampleMid, exampleMid).
+    Fork(exampleMid, exampleMid).
+    Fork(exampleMid, exampleMid, exampleMid).
     Throttle(2).
     Stage(exampleEnd).
     Run()
@@ -186,7 +183,7 @@ Combine multiple branches into one:
 
 ```go
 gliter.NewPipeline(exampleGen()).
-    Stage(exampleMid, exampleMid).
+    Fork(exampleMid, exampleMid).
     Merge(func(items []int) ([]int, error) {
         sum := 0
         for _, item := range items {
@@ -328,7 +325,7 @@ gliter.NewPipeline(
     exampleGen(),
     gliter.WithLogAll(),
 ).
-    Stage(exampleMid, exampleAlt).
+    Fork(exampleMid, exampleAlt).
     Stage(exampleEnd).
     Run()
 ```
@@ -369,7 +366,7 @@ Supported WorkerPool Options:
 -   `WithRetry`
 -   `WithBuffer`
 
-See `./examples/worker_pool_example.go` for more.
+See `./examples/worker_pool/main.go` for more.
 
 ---
 
@@ -397,10 +394,10 @@ Includes `Filter`, `Map`, `Reduce`, `Find`, `Len`, `Reverse`, `At`, `Slice`, etc
 
 ## Examples
 
+-   [Latest demo](./examples/new/main.go)
 -   [Pre-built generators](./examples/generators)
--   [Pipeline example](./examples/pipeline_example.go)
--   [Pipeline with fan-out](./examples/pipeline_fan_out.go)
--   [WorkerPool](./examples/worker_pool_example.go)
+-   [Original pipeline examples](./examples/original)
+-   [WorkerPool](./examples/worker_pool/main.go)
 -   [Benchmarks](https://github.com/arrno/benchmark-gliter)
 
 ---

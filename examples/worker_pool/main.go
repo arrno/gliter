@@ -51,3 +51,10 @@ func periodic() {
 	fmt.Println(results)
 
 }
+
+func main() {
+	fmt.Println("Worker pool simple:")
+	simple()
+	fmt.Println("Worker pool periodic:")
+	periodic()
+}
